@@ -29,19 +29,13 @@ const AnimatedTitleWrapper = styled.div`
   margin-top: 32px;
   width: 100%;
   display: flex;
+  flex-direction: column;
   justify-content: center;
-  align-items: flex-start;
+  align-items: center;
   position: sticky;
   top: 0;
   z-index: 100;
   background: #fff;
-`;
-
-const AnimatedTitleSVG = styled.svg`
-  width: 520px;
-  height: 120px;
-  display: block;
-  overflow: visible;
 `;
 
 const SearchWrapper = styled.div`
@@ -391,75 +385,61 @@ const SportsCatLink = styled.div`
 `;
 
 function AnimatedUpVoteTitle({ logoRef }) {
-  // Animation: always visible dark blue text, baby blue fills up, then dark blue fills up, no pulse
   return (
     <AnimatedTitleWrapper ref={logoRef}>
-      <AnimatedTitleSVG viewBox="0 0 520 120">
-        <defs>
-          <linearGradient id="babyFill" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor={BABY_BLUE} />
-            <stop offset="100%" stopColor={BABY_BLUE} />
-          </linearGradient>
-          <linearGradient id="darkFill" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stopColor={DARKER_BLUE} />
-            <stop offset="100%" stopColor={DARKER_BLUE} />
-          </linearGradient>
-          {/* Baby blue mask animates up first, then dark blue mask animates up */}
-          <mask id="babyMask">
-            <rect x="0" y="0" width="520" height="120" fill="white">
-              <animate attributeName="y" values="120;0;0;120" keyTimes="0;0.2;0.7;1" dur="14s" repeatCount="indefinite" />
-              <animate attributeName="height" values="0;120;120;0" keyTimes="0;0.2;0.7;1" dur="14s" repeatCount="indefinite" />
-            </rect>
-          </mask>
-          <mask id="darkMask">
-            <rect x="0" y="0" width="520" height="120" fill="white">
-              <animate attributeName="y" values="120;120;0;0;120" keyTimes="0;0.2;0.45;0.95;1" dur="14s" repeatCount="indefinite" />
-              <animate attributeName="height" values="0;0;120;120;0" keyTimes="0;0.2;0.45;0.95;1" dur="14s" repeatCount="indefinite" />
-            </rect>
-          </mask>
-        </defs>
-        {/* Always visible dark blue text */}
-        <text x="50%" y="85" textAnchor="middle"
-          fontFamily="'Inter', 'Segoe UI', Arial, sans-serif"
-          fontWeight="800"
-          fontSize="5.2rem"
-          letterSpacing="-2px"
-          fill={DARKER_BLUE}
-        >
-          Vootes
-        </text>
-        {/* Baby blue fill animates up */}
-        <text x="50%" y="85" textAnchor="middle"
-          fontFamily="'Inter', 'Segoe UI', Arial, sans-serif"
-          fontWeight="800"
-          fontSize="5.2rem"
-          letterSpacing="-2px"
-          fill="url(#babyFill)"
-          mask="url(#babyMask)"
-        >
-          Vootes
-        </text>
-        {/* Dark blue fill animates up over baby blue */}
-        <text x="50%" y="85" textAnchor="middle"
-          fontFamily="'Inter', 'Segoe UI', Arial, sans-serif"
-          fontWeight="800"
-          fontSize="5.2rem"
-          letterSpacing="-2px"
-          fill="url(#darkFill)"
-          mask="url(#darkMask)"
-        >
-          Vootes
-        </text>
-        {/* Subtitle */}
-        <text x="50%" y="115" textAnchor="middle"
-          fontFamily="'Inter', 'Segoe UI', Arial, sans-serif"
-          fontWeight="400"
-          fontSize="1.1rem"
-          fill="#666666"
-        >
-          Every vote counts. Especially yours.
-        </text>
-      </AnimatedTitleSVG>
+      <div style={{
+        textAlign: 'center',
+        fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
+        fontWeight: '800',
+        fontSize: '5.2rem',
+        letterSpacing: '-2px',
+        color: DARKER_BLUE,
+        marginBottom: '4px',
+        position: 'relative'
+      }}>
+        <div style={{
+          position: 'relative',
+          display: 'inline-block'
+        }}>
+          <span style={{
+            position: 'relative',
+            zIndex: 2
+          }}>
+            Vootes
+          </span>
+          <div style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            color: BABY_BLUE,
+            animation: 'colorShift 14s infinite',
+            zIndex: 1
+          }}>
+            Vootes
+          </div>
+        </div>
+      </div>
+      <div style={{
+        textAlign: 'center',
+        fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
+        fontWeight: '400',
+        fontSize: '1.1rem',
+        color: '#666666',
+        marginTop: '-24px'
+      }}>
+        Every vote counts. Especially yours.
+      </div>
+      <style jsx>{`
+        @keyframes colorShift {
+          0%, 20% { opacity: 0; }
+          25%, 45% { opacity: 1; }
+          50%, 70% { opacity: 0; }
+          75%, 95% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+      `}</style>
     </AnimatedTitleWrapper>
   );
 }
@@ -467,9 +447,9 @@ function AnimatedUpVoteTitle({ logoRef }) {
 function App() {
   const categories = [
     'Sports',
-    'Movies & TV',
-    'History',
-    'Science',
+    'Food',
+    'Entertainment',
+    'Brands',
     'Other',
   ];
   const [openDropdown, setOpenDropdown] = useState(null);
@@ -1310,7 +1290,36 @@ function App() {
                     <div key={item.id || item.name || idx} style={{ opacity: 1 }}>
                       <RankItem>
                         <RankNum>{rankPage * 10 + idx + 1}.</RankNum>
-                        <RankName>{item.name}</RankName>
+                        <div style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          flex: 1,
+                          marginLeft: '16px'
+                        }}>
+                          {item.imageUrl && (
+                            <div style={{
+                              width: '32px',
+                              height: '32px',
+                              borderRadius: '4px',
+                              overflow: 'hidden',
+                              marginRight: '12px',
+                              flexShrink: 0,
+                              backgroundColor: '#f0f0f0'
+                            }}>
+                              <img 
+                                src={item.imageUrl} 
+                                alt={item.name} 
+                                style={{ 
+                                  width: '100%', 
+                                  height: '100%', 
+                                  objectFit: 'cover',
+                                  display: 'block'
+                                }} 
+                              />
+                            </div>
+                          )}
+                          <RankName>{item.name}</RankName>
+                        </div>
                         <RankScore>{item.indexScore ?? 0}</RankScore>
                       </RankItem>
                     </div>
