@@ -3,6 +3,7 @@ import './App.css'
 import { FiSearch, FiChevronDown, FiChevronUp } from 'react-icons/fi'
 import React, { useState, useEffect, useRef } from 'react'
 import AdminPanel from './AdminPanel'
+import BulkUploadForm from './BulkUploadForm'
 import { fetchCategories, fetchCategoryById, fetchCategoryUpvotes, fetchItemsForCategory } from './dbUtils'
 import { useSpring, animated, useSprings, config } from '@react-spring/web';
 import { doc, updateDoc, increment, getDoc } from 'firebase/firestore';
@@ -264,8 +265,8 @@ const UpvoteImagesRow = styled.div`
 
 const ImagePlaceholder = styled.div`
   width: 240px;
-  height: 280px;
-  background: #d1d5db;
+  height: 240px;
+  background: #f3f4f6;
   border-radius: 16px;
   display: flex;
   align-items: center;
@@ -273,6 +274,8 @@ const ImagePlaceholder = styled.div`
   font-size: 1.2rem;
   color: #888;
   box-shadow: 0 2px 8px rgba(34,34,59,0.06);
+  position: relative;
+  overflow: hidden;
 `;
 
 const OrText = styled.div`
@@ -293,7 +296,7 @@ const ItemName = styled.div`
 // Rank list styles
 const RankList = styled.div`
   width: 100%;
-  max-width: 420px;
+  max-width: 520px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -319,17 +322,19 @@ const RankNum = styled.span`
   color: #2563eb;
   width: 2.2em;
   text-align: right;
+  margin-right: 8px;
 `;
 
 const RankName = styled.span`
   flex: 1;
-  margin-left: 16px;
+  margin-left: 8px;
   text-align: left;
   font-weight: 500;
   color: #22223b;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: 280px;
 `;
 
 const RankScore = styled.span`
@@ -355,32 +360,33 @@ const DownArrow = styled.div`
 // Add with other styled-components
 const SportsDropdownGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, auto);
-  gap: 18px 24px;
-  padding: 18px 12px 8px 12px;
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-auto-rows: min-content;
+  grid-auto-flow: row;
+  gap: 2px 8px;
+  padding: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+  width: 100%;
 `;
-const SportsSubtitle = styled.div`
-  font-weight: 700;
-  font-size: 0.98rem;
-  margin-bottom: 6px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  justify-content: center;
-  text-align: center;
-`;
-const SportsCatLink = styled.div`
-  font-size: 0.88rem;
+
+const SportsButton = styled.div`
+  width: 100%;
+  padding: 2px 4px;
   color: #2563eb;
+  font-size: 0.8rem;
+  font-weight: 500;
   cursor: pointer;
-  margin-bottom: 3px;
-  padding: 2px 0 2px 0;
-  border-radius: 6px;
-  transition: background 0.13s;
+  transition: color 0.15s ease;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-radius: 2px;
+  
   &:hover {
-    background: #e6f0ff;
     color: #174ea6;
+    background: #f0f4ff;
   }
 `;
 
@@ -454,7 +460,7 @@ function App() {
   ];
   const [openDropdown, setOpenDropdown] = useState(null);
   const [searchFocused, setSearchFocused] = useState(false);
-  const [activeTab, setActiveTab] = useState('UpVote');
+  const [activeTab, setActiveTab] = useState('Vote');
   const [searchTerm, setSearchTerm] = useState('');
   const [allCategories, setAllCategories] = useState([]);
   const [searchResults, setSearchResults] = useState([]);
@@ -466,6 +472,16 @@ function App() {
   const categoriesWrapperRef = useRef(null);
   const logoRef = useRef(null);
 
+  // Trending Questions state
+  const [trendingMode, setTrendingMode] = useState(false);
+  const [trendingRound, setTrendingRound] = useState(0);
+  const [trendingCategory, setTrendingCategory] = useState(null);
+  const [trendingItems, setTrendingItems] = useState([null, null]);
+  const [trendingCompleted, setTrendingCompleted] = useState(false);
+
+  // Track which item was voted for (for border styling)
+  const [votedItemIdx, setVotedItemIdx] = useState(null);
+
   // SVG border animation values
   const borderLength = 2 * (BAR_WIDTH_NUM + BAR_HEIGHT_NUM - 2 * BORDER_RADIUS) + 2 * Math.PI * BORDER_RADIUS;
 
@@ -476,6 +492,45 @@ function App() {
       setSearchResults(results);
     });
   }, []);
+
+  // Function to get random category and its top 2 items
+  const getRandomTrendingCategory = async () => {
+    if (allCategories.length === 0) return null;
+    
+    // Get a random category
+    const randomCategory = allCategories[Math.floor(Math.random() * allCategories.length)];
+    
+    try {
+      // Fetch items for this category
+      const items = await fetchItemsForCategory(randomCategory.id);
+      const sorted = [...items].sort((a, b) => (b.indexScore || 0) - (a.indexScore || 0));
+      
+      // Get top 2 items
+      const topItems = sorted.slice(0, 2);
+      
+      return {
+        category: randomCategory,
+        items: topItems
+      };
+    } catch (error) {
+      console.error('Error fetching trending items:', error);
+      return null;
+    }
+  };
+
+  // Initialize trending mode when no category is selected
+  useEffect(() => {
+    if (!selectedCategory && !trendingMode && trendingRound === 0 && allCategories.length > 0 && !trendingCompleted) {
+      setTrendingMode(true);
+      setTrendingRound(1);
+      getRandomTrendingCategory().then(result => {
+        if (result) {
+          setTrendingCategory(result.category);
+          setTrendingItems(result.items);
+        }
+      });
+    }
+  }, [selectedCategory, trendingMode, trendingRound, allCategories, trendingCompleted]);
 
   // Filter categories in-memory as user types
   useEffect(() => {
@@ -515,16 +570,16 @@ function App() {
 
   // Tabs move down with a fixed duration
   const tabsSpring = useSpring({
-    transform: selectedCategory ? 'translateY(112px)' : 'translateY(0px)',
+    transform: (selectedCategory || trendingMode) ? 'translateY(112px)' : 'translateY(0px)',
     config: { duration: TABS_ANIMATION_DURATION },
   });
 
   // Info block fades in after tabs move down
   const infoSpring = useSpring({
-    opacity: selectedCategory ? 1 : 0,
-    transform: selectedCategory ? 'translateY(0px)' : 'translateY(-24px)',
+    opacity: (selectedCategory || trendingMode) ? 1 : 0,
+    transform: (selectedCategory || trendingMode) ? 'translateY(0px)' : 'translateY(-24px)',
     config: { duration: INFO_ANIMATION_DURATION },
-    delay: selectedCategory ? TABS_ANIMATION_DURATION : 0,
+    delay: (selectedCategory || trendingMode) ? TABS_ANIMATION_DURATION : 0,
   });
 
   // Shake animation for each image
@@ -532,14 +587,14 @@ function App() {
   const [shake2, setShake2] = useSpring(() => ({ rotate: 0 }));
 
   const imagesSpring = useSpring({
-    opacity: selectedCategory ? 1 : 0,
-    filter: selectedCategory ? 'blur(0px)' : 'blur(4px)',
+    opacity: (selectedCategory || trendingMode) ? 1 : 0,
+    filter: (selectedCategory || trendingMode) ? 'blur(0px)' : 'blur(4px)',
     config: { duration: IMAGES_ANIMATION_DURATION },
-    delay: selectedCategory ? TABS_ANIMATION_DURATION : 0,
+    delay: (selectedCategory || trendingMode) ? TABS_ANIMATION_DURATION : 0,
   });
 
   // Animated sliding underline for tabs
-  const tabLabels = ['UpVote', 'Results', 'List'];
+  const tabLabels = ['Vote', 'Results'];
   const [underlineSpring, setUnderlineSpring] = useSpring(() => ({ left: 0, width: 0 }));
   const tabHeaderRowRef = useRef(null);
   const tabRefs = useRef(tabLabels.map(() => React.createRef()));
@@ -566,24 +621,24 @@ function App() {
   const DESC_ANIMATION_DELAY = TABS_ANIMATION_DURATION + 80; // start after tabs and a bit after title
 
   const titleSpring = useSpring({
-    opacity: selectedCategory ? 1 : 0,
-    clipPath: selectedCategory ? 'inset(0% 0% 0% 0%)' : 'inset(0% 100% 0% 0%)',
+    opacity: (selectedCategory || trendingMode) ? 1 : 0,
+    clipPath: (selectedCategory || trendingMode) ? 'inset(0% 0% 0% 0%)' : 'inset(0% 100% 0% 0%)',
     config: { duration: TITLE_ANIMATION_DURATION },
-    delay: selectedCategory ? TABS_ANIMATION_DURATION : 0,
+    delay: (selectedCategory || trendingMode) ? TABS_ANIMATION_DURATION : 0,
   });
 
   const upvotesSpring = useSpring({
-    opacity: selectedCategory ? 1 : 0,
-    clipPath: selectedCategory ? 'inset(0% 0% 0% 0%)' : 'inset(0% 100% 0% 0%)',
+    opacity: (selectedCategory || trendingMode) ? 1 : 0,
+    clipPath: (selectedCategory || trendingMode) ? 'inset(0% 0% 0% 0%)' : 'inset(0% 100% 0% 0%)',
     config: { duration: TITLE_ANIMATION_DURATION },
-    delay: selectedCategory ? TABS_ANIMATION_DURATION + 60 : 0,
+    delay: (selectedCategory || trendingMode) ? TABS_ANIMATION_DURATION + 60 : 0,
   });
 
   const descSpring = useSpring({
-    opacity: selectedCategory ? 1 : 0,
-    clipPath: selectedCategory ? 'inset(0% 0% 0% 0%)' : 'inset(0% 100% 0% 0%)',
+    opacity: (selectedCategory || trendingMode) ? 1 : 0,
+    clipPath: (selectedCategory || trendingMode) ? 'inset(0% 0% 0% 0%)' : 'inset(0% 100% 0% 0%)',
     config: { duration: DESC_ANIMATION_DURATION },
-    delay: selectedCategory ? DESC_ANIMATION_DELAY : 0,
+    delay: (selectedCategory || trendingMode) ? DESC_ANIMATION_DELAY : 0,
   });
 
   // State for rank tab pagination and items
@@ -664,9 +719,9 @@ function App() {
     }
   }, [lastWinnerId]);
 
-  // Fetch items for UpVote game when category changes
+  // Fetch items for Vote game when category changes
   useEffect(() => {
-    if (activeTab === 'UpVote' && selectedCategory) {
+    if (activeTab === 'Vote' && selectedCategory) {
       setGameLoading(true);
       fetchItemsForCategory(selectedCategory.id).then(items => {
         setGameItems(items);
@@ -713,7 +768,13 @@ function App() {
 
   // In handleVote, after fade out and before updating state, trigger the pulse for the winner image:
   function handleVote(winnerIdx) {
-    if (!currentPair[0] || !currentPair[1]) return;
+    // Check if we're in trending mode or regular mode
+    const items = trendingMode ? trendingItems : currentPair;
+    if (!items[0] || !items[1]) return;
+    
+    // Set which item was voted for (for border styling)
+    setVotedItemIdx(winnerIdx);
+    
     const loserIdx = 1 - winnerIdx;
     setDisappearingIdx(loserIdx);
     (loserIdx === 0 ? disappearApi0 : disappearApi1).start({ opacity: 0, config: { duration: 220 } });
@@ -735,8 +796,9 @@ function App() {
         },
         config: { tension: 400, friction: 8 },
       });
-      borderApi0.start({ borderOpacity: 1, config: { duration: 900 } });
-      setTimeout(() => borderApi0.start({ borderOpacity: 0, config: { duration: 400 } }), 1200);
+      borderApi0.start({ borderOpacity: 1, config: { duration: 0 } });
+      // Keep border visible during delay, then fade out
+      setTimeout(() => borderApi0.start({ borderOpacity: 0, config: { duration: 400 } }), 2000);
     } else {
       imgPulseApi1.start({
         from: { scale: 1 },
@@ -754,11 +816,57 @@ function App() {
         },
         config: { tension: 400, friction: 8 },
       });
-      borderApi1.start({ borderOpacity: 1, config: { duration: 900 } });
-      setTimeout(() => borderApi1.start({ borderOpacity: 0, config: { duration: 400 } }), 1200);
+      borderApi1.start({ borderOpacity: 1, config: { duration: 0 } });
+      // Keep border visible during delay, then fade out
+      setTimeout(() => borderApi1.start({ borderOpacity: 0, config: { duration: 400 } }), 2000);
     }
     // After fade out, do calculations and show next matchup optimistically
     setTimeout(() => {
+      // Handle trending questions progression
+      if (trendingMode) {
+        // Reset fade and disappearing state for trending mode
+        (loserIdx === 0 ? disappearApi0 : disappearApi1).set({ opacity: 1 });
+        setDisappearingIdx(null);
+        
+        // Update ELO scores for trending items
+        const winner = trendingItems[winnerIdx];
+        const loser = trendingItems[loserIdx];
+        const { winner: updatedWinner, loser: updatedLoser } = updateElo(winner, loser);
+        
+        // Update Firestore for trending category
+        updateDoc(doc(db, 'categories', trendingCategory.id, 'items', updatedWinner.id), { indexScore: updatedWinner.indexScore });
+        updateDoc(doc(db, 'categories', trendingCategory.id, 'items', updatedLoser.id), { indexScore: updatedLoser.indexScore });
+        
+        // Increment upvotes for the trending category
+        updateDoc(doc(db, 'categories', trendingCategory.id), { upvotes: increment(1) });
+        
+        if (trendingRound >= 5) {
+          // End trending mode
+          setTrendingMode(false);
+          setTrendingRound(0);
+          setTrendingCategory(null);
+          setTrendingItems([null, null]);
+          setTrendingCompleted(true); // Mark as completed
+          setVotedItemIdx(null); // Reset border styling
+          return;
+        } else {
+          // Wait for pulse animation to complete before moving to next round
+          setTimeout(() => {
+            // Move to next round
+            const nextRound = trendingRound + 1;
+            setTrendingRound(nextRound);
+            setVotedItemIdx(null); // Reset border styling for new items
+            getRandomTrendingCategory().then(result => {
+              if (result) {
+                setTrendingCategory(result.category);
+                setTrendingItems(result.items);
+              }
+            });
+          }, 200); // Wait 200ms for pulse animation to complete
+          return;
+        }
+      }
+
       // Optimistically update local gameItems and currentPair
       const winner = currentPair[winnerIdx];
       const loser = currentPair[loserIdx];
@@ -788,6 +896,7 @@ function App() {
       // Reset fade and disappearing state
       (loserIdx === 0 ? disappearApi0 : disappearApi1).set({ opacity: 1 });
       setDisappearingIdx(null);
+      setVotedItemIdx(null); // Reset border styling for new items
       setTimeout(() => setFadeInIdx(null), 300);
       // Firestore writes in background
       updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedWinner.id), { indexScore: updatedWinner.indexScore });
@@ -842,8 +951,8 @@ function App() {
 
   // Format upvotes (e.g. 1.1k, 1.1M)
   function formatUpvotes(num) {
-    if (num >= 1_000_000) return (num / 1_000_000).toFixed(1).replace(/\.0$/, '') + 'M';
-    if (num >= 1_000) return (num / 1_000).toFixed(1).replace(/\.0$/, '') + 'k';
+    if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + 'M';
+    if (num >= 1_000) return (num / 1_000).toFixed(1) + 'k';
     return num;
   }
 
@@ -1004,6 +1113,12 @@ function App() {
                           setSelectedCategory({ id: cat.id, name: cat.name });
                           setShowResults(false);
                           setSearchTerm('');
+                          // Exit trending mode when category is selected
+                          setTrendingMode(false);
+                          setTrendingRound(0);
+                          setTrendingCategory(null);
+                          setTrendingItems([null, null]);
+                          setTrendingCompleted(false); // Reset completion status
                           setTimeout(() => {
                             if (contentBlockRef.current && logoRef.current) {
                               const logoBottom = logoRef.current.getBoundingClientRect().bottom;
@@ -1050,68 +1165,42 @@ function App() {
         </CategoriesWrapper>
         <DropdownPanel open={openDropdown !== null}>
           {openDropdown !== null && (
-            categories[openDropdown] === 'Sports' ? (
-              <SportsDropdownGrid>
-                <div>
-                  <SportsSubtitle>Football ⚽️</SportsSubtitle>
-                  <SportsCatLink
+            <SportsDropdownGrid>
+              {allCategories
+                .filter(cat => {
+                  const dropdownType = categories[openDropdown];
+                  // If category has a categoryType, filter by it
+                  if (cat.categoryType) {
+                    return cat.categoryType === dropdownType;
+                  }
+                  // Legacy categories without categoryType - use name-based filtering
+                  if (dropdownType === 'Sports') {
+                    return cat.name.includes('Football') || cat.name.includes('Basketball') || cat.name.includes('NBA');
+                  } else if (dropdownType === 'Food') {
+                    return cat.name.includes('Food') || cat.name.includes('Fast Food');
+                  }
+                  // For Entertainment, Brands, and Other - only show categories with proper categoryType
+                  return false;
+                })
+                .sort((a, b) => a.name.localeCompare(b.name))
+                .map(cat => (
+                  <SportsButton
+                    key={cat.id}
                     onClick={() => {
-                      const cat = allCategories.find(c => c.name === 'All-Time Football Players');
-                      if (cat) {
-                        setSelectedCategory({ id: cat.id, name: cat.name });
-                        setOpenDropdown(null);
-                      }
+                      setSelectedCategory({ id: cat.id, name: cat.name });
+                      setOpenDropdown(null);
+                      // Exit trending mode when category is selected
+                      setTrendingMode(false);
+                      setTrendingRound(0);
+                      setTrendingCategory(null);
+                      setTrendingItems([null, null]);
+                      setTrendingCompleted(false); // Reset completion status
                     }}
                   >
-                    All-Time Football Players
-                  </SportsCatLink>
-                </div>
-                <div>
-                  <SportsSubtitle>Basketball 🏀</SportsSubtitle>
-                  <SportsCatLink
-                    onClick={() => {
-                      const cat = allCategories.find(c => c.name === 'Current NBA Players');
-                      if (cat) {
-                        setSelectedCategory({ id: cat.id, name: cat.name });
-                        setOpenDropdown(null);
-                      }
-                    }}
-                  >
-                    Current NBA Players
-                  </SportsCatLink>
-                  <SportsCatLink
-                    onClick={() => {
-                      const cat = allCategories.find(c => c.name === 'All-Time NBA Players');
-                      if (cat) {
-                        setSelectedCategory({ id: cat.id, name: cat.name });
-                        setOpenDropdown(null);
-                      }
-                    }}
-                  >
-                    All-Time NBA Players
-                  </SportsCatLink>
-                </div>
-                <div>
-                  <SportsSubtitle>American Football 🏈</SportsSubtitle>
-                </div>
-                <div>
-                  <SportsSubtitle>Formula 1 🏎️</SportsSubtitle>
-                </div>
-                <div>
-                  <SportsSubtitle>Golf ⛳️</SportsSubtitle>
-                </div>
-                <div>
-                  <SportsSubtitle>Baseball ⚾️</SportsSubtitle>
-                </div>
-                <div>
-                  <SportsSubtitle>Other 🏉</SportsSubtitle>
-                </div>
-              </SportsDropdownGrid>
-            ) : (
-              <div style={{ color: '#22223b', fontSize: '1.1rem' }}>
-                {categories[openDropdown]} dropdown content...
-              </div>
-            )
+                    {cat.name}
+                  </SportsButton>
+                ))}
+            </SportsDropdownGrid>
           )}
         </DropdownPanel>
         <ContentBlock ref={contentBlockRef} style={{ flexDirection: 'column', alignItems: 'stretch', padding: 0, position: 'relative', overflow: 'visible' }}>
@@ -1123,6 +1212,15 @@ function App() {
                 <animated.div style={{ fontWeight: 500, fontSize: 18, color: '#2563eb', ...upvotesSpring }}>{categoryUpvotes !== null ? `${formatUpvotes(categoryUpvotes)} Vootes` : ''}</animated.div>
               </div>
               <animated.div style={{ fontSize: 15, color: '#444', margin: '8px 0 0 0', textAlign: 'left', ...descSpring }}>{categoryInfo.description}</animated.div>
+            </div>
+          )}
+          {trendingMode && (
+            <div style={{ background: 'transparent', padding: '32px 32px 0 32px', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
+                <animated.div style={{ fontWeight: 700, fontSize: 22, ...titleSpring }}>Trending Questions 📈</animated.div>
+                <animated.div style={{ fontWeight: 500, fontSize: 18, color: '#2563eb', ...upvotesSpring }}>{trendingRound}/5</animated.div>
+              </div>
+              <animated.div style={{ fontSize: 15, color: '#444', margin: '8px 0 0 0', textAlign: 'left', ...descSpring }}>{trendingCategory?.name}</animated.div>
             </div>
           )}
           <div style={{ zIndex: 1, width: '100%' }}>
@@ -1152,19 +1250,19 @@ function App() {
             </TabHeaderRow>
           </div>
           <div style={{ padding: 32, flex: 1 }}>
-            {activeTab === 'UpVote' && selectedCategory && (
+            {activeTab === 'Vote' && selectedCategory && (
               <animated.div style={imagesSpring}>
                 <UpvoteImagesRow style={{ alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative', width: '100%', height: 280, marginTop: 56 }}>
                   <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake1.rotate.to(r => `rotate(${r}deg)`), marginRight: 36 }}>
                     <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1 }}>
                       <animated.div style={{ scale: imgPulse0.scale }}>
-                        <ImagePlaceholder style={{ cursor: gameLoading || !currentPair[0] ? 'default' : 'pointer', opacity: currentPair[0] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: '1.5px solid #222', width: 240, height: 280 }} onClick={() => !gameLoading && currentPair[0] && handleVote(0)}>
+                        <ImagePlaceholder style={{ cursor: gameLoading || !currentPair[0] ? 'default' : 'pointer', opacity: currentPair[0] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 0 ? `2px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={() => !gameLoading && currentPair[0] && handleVote(0)}>
                           {currentPair[0]?.imageUrl && (
-                            <img src={currentPair[0].imageUrl} alt={currentPair[0]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 16, display: 'block' }} />
+                            <img src={currentPair[0].imageUrl} alt={currentPair[0]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
                           )}
                           <animated.div style={{
                             position: 'absolute',
-                            top: 0, left: 0, width: 240, height: 280,
+                            top: 0, left: 0, width: 240, height: 260,
                             borderRadius: 16,
                             border: `4px solid ${NEON_GREEN}`,
                             background: 'transparent',
@@ -1179,10 +1277,9 @@ function App() {
                     </animated.div>
                     <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
                       <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, width: '100%' }}>
-                        <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[0]?.name || `Item 1`}</ItemName>
-                      </animated.div>
-                      <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, marginTop: 2, width: '100%', textAlign: 'center' }}>
-                        <div style={{ fontSize: 15, color: '#888', textAlign: 'center' }}>{currentPair[0]?.indexScore ?? ''}</div>
+                        <animated.div style={{ scale: namePulse0.scale }}>
+                          <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[0]?.name || `Item 1`}</ItemName>
+                        </animated.div>
                       </animated.div>
                     </div>
                     {/* Lock In as #1 button logic for left item */}
@@ -1216,13 +1313,13 @@ function App() {
                   <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake2.rotate.to(r => `rotate(${r}deg)`), marginLeft: 36 }}>
                     <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1 }}>
                       <animated.div style={{ scale: imgPulse1.scale }}>
-                        <ImagePlaceholder style={{ cursor: gameLoading || !currentPair[1] ? 'default' : 'pointer', opacity: currentPair[1] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: '1.5px solid #222', width: 240, height: 280 }} onClick={() => !gameLoading && currentPair[1] && handleVote(1)}>
+                        <ImagePlaceholder style={{ cursor: gameLoading || !currentPair[1] ? 'default' : 'pointer', opacity: currentPair[1] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 1 ? `2px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={() => !gameLoading && currentPair[1] && handleVote(1)}>
                           {currentPair[1]?.imageUrl && (
-                            <img src={currentPair[1].imageUrl} alt={currentPair[1]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 16, display: 'block' }} />
+                            <img src={currentPair[1].imageUrl} alt={currentPair[1]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
                           )}
                           <animated.div style={{
                             position: 'absolute',
-                            top: 0, left: 0, width: 240, height: 280,
+                            top: 0, left: 0, width: 240, height: 260,
                             borderRadius: 16,
                             border: `4px solid ${NEON_GREEN}`,
                             background: 'transparent',
@@ -1238,9 +1335,6 @@ function App() {
                     <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
                       <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, width: '100%' }}>
                         <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[1]?.name || `Item 2`}</ItemName>
-                      </animated.div>
-                      <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, marginTop: 2, width: '100%', textAlign: 'center' }}>
-                        <div style={{ fontSize: 15, color: '#888', textAlign: 'center' }}>{currentPair[1]?.indexScore ?? ''}</div>
                       </animated.div>
                     </div>
                     {/* Lock In as #1 button logic for right item */}
@@ -1268,6 +1362,80 @@ function App() {
                 </UpvoteImagesRow>
                 {gameLoading && <div style={{ textAlign: 'center', color: '#888', marginTop: 16 }}>Loading...</div>}
               </animated.div>
+            )}
+            {activeTab === 'Vote' && !selectedCategory && trendingMode && (
+              <animated.div style={imagesSpring}>
+                <UpvoteImagesRow style={{ alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative', width: '100%', height: 280, marginTop: 56 }}>
+                  <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake1.rotate.to(r => `rotate(${r}deg)`), marginRight: 36 }}>
+                    <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1 }}>
+                      <animated.div style={{ scale: imgPulse0.scale }}>
+                        <ImagePlaceholder style={{ cursor: trendingItems[0] ? 'pointer' : 'default', opacity: trendingItems[0] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 0 ? `2px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={() => trendingItems[0] && handleVote(0)}>
+                          {trendingItems[0]?.imageUrl && (
+                            <img src={trendingItems[0].imageUrl} alt={trendingItems[0]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
+                          )}
+                          <animated.div style={{
+                            position: 'absolute',
+                            top: 0, left: 0, width: 240, height: 260,
+                            borderRadius: 16,
+                            border: `4px solid ${NEON_GREEN}`,
+                            background: 'transparent',
+                            pointerEvents: 'none',
+                            zIndex: 10,
+                            opacity: borderSpring0.borderOpacity,
+                            boxSizing: 'border-box',
+                            transition: 'opacity 0.3s',
+                          }} />
+                        </ImagePlaceholder>
+                      </animated.div>
+                    </animated.div>
+                    <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
+                      <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, width: '100%' }}>
+                        <animated.div style={{ scale: namePulse0.scale }}>
+                          <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{trendingItems[0]?.name || `Item 1`}</ItemName>
+                        </animated.div>
+                      </animated.div>
+                    </div>
+                  </animated.div>
+                  <div style={{ position: 'absolute', left: '50%', top: '44%', transform: 'translate(-50%, -50%)', minWidth: 120, maxWidth: 140, minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 3 }}>
+                    <OrText style={{ margin: 0, padding: 0, minWidth: 0, textAlign: 'center', wordBreak: 'break-word' }}>OR</OrText>
+                  </div>
+                  <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake2.rotate.to(r => `rotate(${r}deg)`), marginLeft: 36 }}>
+                    <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1 }}>
+                      <animated.div style={{ scale: imgPulse1.scale }}>
+                        <ImagePlaceholder style={{ cursor: trendingItems[1] ? 'pointer' : 'default', opacity: trendingItems[1] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 1 ? `2px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={() => trendingItems[1] && handleVote(1)}>
+                          {trendingItems[1]?.imageUrl && (
+                            <img src={trendingItems[1].imageUrl} alt={trendingItems[1]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
+                          )}
+                          <animated.div style={{
+                            position: 'absolute',
+                            top: 0, left: 0, width: 240, height: 260,
+                            borderRadius: 16,
+                            border: `4px solid ${NEON_GREEN}`,
+                            background: 'transparent',
+                            pointerEvents: 'none',
+                            zIndex: 10,
+                            opacity: borderSpring1.borderOpacity,
+                            boxSizing: 'border-box',
+                            transition: 'opacity 0.3s',
+                          }} />
+                        </ImagePlaceholder>
+                      </animated.div>
+                    </animated.div>
+                    <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
+                      <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, width: '100%' }}>
+                        <animated.div style={{ scale: namePulse1.scale }}>
+                          <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{trendingItems[1]?.name || `Item 2`}</ItemName>
+                        </animated.div>
+                      </animated.div>
+                    </div>
+                  </animated.div>
+                </UpvoteImagesRow>
+              </animated.div>
+            )}
+            {activeTab === 'Vote' && !selectedCategory && !trendingMode && (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '1.5rem', color: '#888' }}>
+                Select Category
+              </div>
             )}
             {activeTab === 'Results' && selectedCategory && (
               <animated.div style={{ opacity: resultsParentSpring.opacity }}>
@@ -1320,7 +1488,7 @@ function App() {
                           )}
                           <RankName>{item.name}</RankName>
                         </div>
-                        <RankScore>{item.indexScore ?? 0}</RankScore>
+                        <RankScore>{formatUpvotes(item.indexScore ?? 0)}</RankScore>
                       </RankItem>
                     </div>
                   ))}
@@ -1338,7 +1506,7 @@ function App() {
           </div>
         </ContentBlock>
       </CenteredBarWrapper>
-      <AdminPanel />
+      <BulkUploadForm />
     </Container>
   );
 }

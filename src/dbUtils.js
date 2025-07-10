@@ -2,8 +2,12 @@ import { db } from './firebase.js';
 import { collection, addDoc, doc, setDoc, getDocs, query, where } from 'firebase/firestore';
 
 // Add a new category
-export const addCategory = async (name, description = '') => {
-  const docRef = await addDoc(collection(db, 'categories'), { name, description });
+export const addCategory = async (name, description = '', categoryType = 'Other') => {
+  const docRef = await addDoc(collection(db, 'categories'), { 
+    name, 
+    description, 
+    categoryType 
+  });
   return docRef.id;
 };
 
