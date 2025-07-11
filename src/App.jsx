@@ -27,7 +27,7 @@ const Container = styled.div`
 `;
 
 const AnimatedTitleWrapper = styled.div`
-  margin-top: 32px;
+  margin-top: -10px;
   width: 100%;
   display: flex;
   flex-direction: column;
@@ -37,10 +37,15 @@ const AnimatedTitleWrapper = styled.div`
   top: 0;
   z-index: 100;
   background: #fff;
+  
+  @media (max-width: 768px) {
+    margin-top: -5px;
+    padding: 0 12px;
+  }
 `;
 
 const SearchWrapper = styled.div`
-  margin-top: 48px;
+  margin-top: 28px;
   width: 100%;
   display: flex;
   justify-content: center;
@@ -48,14 +53,30 @@ const SearchWrapper = styled.div`
   z-index: 20;
 `;
 
+const TotalVootesDisplay = styled.div`
+  text-align: center;
+  color:rgb(198, 20, 204);
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-top: 18px;
+  margin-bottom: -24px;
+  font-family: inherit;
+`;
+
 const CenteredBarWrapper = styled.div`
   width: ${BAR_WIDTH_NUM}px;
+  max-width: calc(100vw - 32px);
   margin: 0 auto;
   box-sizing: border-box;
   overflow: visible;
   position: relative;
   z-index: 20;
   transition: margin-top 0.35s cubic-bezier(.77,0,.18,1);
+  
+  @media (max-width: 768px) {
+    width: calc(100vw - 24px);
+    max-width: none;
+  }
 `;
 
 const AnimatedBorderSVG = styled.svg`
@@ -104,6 +125,11 @@ const SearchInput = styled.input`
   text-align: left;
   position: relative;
   z-index: 2;
+  
+  @media (max-width: 768px) {
+    padding: 12px 20px 12px 20px;
+    font-size: 1rem;
+  }
 `;
 
 const SearchIcon = styled(FiSearch)`
@@ -117,10 +143,10 @@ const SearchIcon = styled(FiSearch)`
 `;
 
 const CategoriesWrapper = styled.div`
-  margin-top: 20px;
+  margin-top: 10px;
   width: 100%;
   display: flex;
-  gap: 8px;
+  gap: 6px;
   box-sizing: border-box;
 `;
 
@@ -143,6 +169,11 @@ const CategoryButton = styled.button`
     color: #22223b;
     outline: none;
   }
+  
+  @media (max-width: 768px) {
+    font-size: 0.9rem;
+    padding: 8px 0;
+  }
 `;
 
 const DropdownIconWrapper = styled.span`
@@ -164,6 +195,11 @@ const DropdownPanel = styled.div`
   z-index: 2;
   box-sizing: border-box;
   overflow: hidden;
+  
+  @media (max-width: 768px) {
+    padding: 20px 16px;
+    border-radius: 0 0 12px 12px;
+  }
 `;
 
 const ContentBlock = styled.div`
@@ -180,6 +216,14 @@ const ContentBlock = styled.div`
   color: #22223b;
   box-shadow: 0 2px 16px rgba(34,34,59,0.04);
   padding: 48px;
+  
+  @media (max-width: 768px) {
+    max-width: calc(100vw - 24px);
+    margin: 16px 12px 0 12px;
+    padding: 24px 16px;
+    min-height: 400px;
+    border-radius: 12px;
+  }
 `;
 
 const TabHeaderRow = styled.div`
@@ -261,6 +305,13 @@ const UpvoteImagesRow = styled.div`
   gap: 40px;
   width: 100%;
   height: 260px;
+  
+  @media (max-width: 768px) {
+    gap: 20px;
+    height: 200px;
+    flex-direction: column;
+    align-items: center;
+  }
 `;
 
 const ImagePlaceholder = styled.div`
@@ -276,6 +327,13 @@ const ImagePlaceholder = styled.div`
   box-shadow: 0 2px 8px rgba(34,34,59,0.06);
   position: relative;
   overflow: hidden;
+  
+  @media (max-width: 768px) {
+    width: 180px;
+    height: 180px;
+    border-radius: 12px;
+    font-size: 1rem;
+  }
 `;
 
 const OrText = styled.div`
@@ -291,6 +349,11 @@ const ItemName = styled.div`
   color: #111;
   font-weight: 600;
   text-align: center;
+  
+  @media (max-width: 768px) {
+    font-size: 1.1rem;
+    margin-top: 4px;
+  }
 `;
 
 // Rank list styles
@@ -390,19 +453,40 @@ const SportsButton = styled.div`
   }
 `;
 
+const VootesTitle = styled.div`
+  text-align: center;
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+  font-weight: 800;
+  font-size: 6.0rem;
+  letter-spacing: -2px;
+  color: ${DARKER_BLUE};
+  margin-bottom: 4px;
+  position: relative;
+  
+  @media (max-width: 768px) {
+    font-size: 4.5rem;
+    letter-spacing: -1px;
+  }
+`;
+
+const VootesSubtitle = styled.div`
+  text-align: center;
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  color: #666666;
+  margin-top: -24px;
+  
+  @media (max-width: 768px) {
+    font-size: 1.1rem;
+    margin-top: -20px;
+  }
+`;
+
 function AnimatedUpVoteTitle({ logoRef }) {
   return (
     <AnimatedTitleWrapper ref={logoRef}>
-      <div style={{
-        textAlign: 'center',
-        fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
-        fontWeight: '800',
-        fontSize: '5.2rem',
-        letterSpacing: '-2px',
-        color: DARKER_BLUE,
-        marginBottom: '4px',
-        position: 'relative'
-      }}>
+      <VootesTitle>
         <div style={{
           position: 'relative',
           display: 'inline-block'
@@ -426,17 +510,10 @@ function AnimatedUpVoteTitle({ logoRef }) {
             Vootes
           </div>
         </div>
-      </div>
-      <div style={{
-        textAlign: 'center',
-        fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
-        fontWeight: '400',
-        fontSize: '1.1rem',
-        color: '#666666',
-        marginTop: '-24px'
-      }}>
+      </VootesTitle>
+      <VootesSubtitle>
         Every vote counts. Especially yours.
-      </div>
+      </VootesSubtitle>
       <style jsx>{`
         @keyframes colorShift {
           0%, 20% { opacity: 0; }
@@ -482,6 +559,11 @@ function App() {
   // Track which item was voted for (for border styling)
   const [votedItemIdx, setVotedItemIdx] = useState(null);
 
+  // Total Vootes state
+  const [totalVootes, setTotalVootes] = useState(0);
+  const [animatedVootes, setAnimatedVootes] = useState(0);
+  const animationRunRef = useRef(false);
+
   // SVG border animation values
   const borderLength = 2 * (BAR_WIDTH_NUM + BAR_HEIGHT_NUM - 2 * BORDER_RADIUS) + 2 * Math.PI * BORDER_RADIUS;
 
@@ -490,7 +572,67 @@ function App() {
     fetchCategories('').then(results => {
       setAllCategories(results);
       setSearchResults(results);
+      // Fetch total Vootes after categories are loaded
+      fetchTotalVootes();
     });
+  }, []);
+
+  // Function to fetch total Vootes from all categories
+  const fetchTotalVootes = async () => {
+    try {
+      const { collection, getDocs } = await import('firebase/firestore');
+      const categoriesSnapshot = await getDocs(collection(db, 'categories'));
+      let total = 0;
+      let categoryCount = 0;
+      categoriesSnapshot.forEach(doc => {
+        const data = doc.data();
+        if (data.upvotes) {
+          total += data.upvotes;
+          categoryCount++;
+          console.log(`Category ${data.name}: ${data.upvotes} upvotes`);
+        }
+      });
+      console.log(`Total Vootes: ${total} from ${categoryCount} categories`);
+      setTotalVootes(total);
+    } catch (error) {
+      console.error('Error fetching total Vootes:', error);
+    }
+  };
+
+  // Count-up animation for total Vootes on page load
+  useEffect(() => {
+    if (totalVootes > 0 && !animationRunRef.current) {
+      animationRunRef.current = true;
+      const duration = 1500; // 1.5 seconds
+      const steps = 60; // 60 steps for smooth animation
+      const increment = totalVootes / steps;
+      const stepDuration = duration / steps;
+      
+      // Start from 0
+      setAnimatedVootes(0);
+      
+      let current = 0;
+      const timer = setInterval(() => {
+        current += increment;
+        if (current >= totalVootes) {
+          setAnimatedVootes(totalVootes);
+          clearInterval(timer);
+        } else {
+          setAnimatedVootes(Math.floor(current));
+        }
+      }, stepDuration);
+      
+      return () => clearInterval(timer);
+    } else if (totalVootes > 0 && animationRunRef.current) {
+      // After initial animation, just update directly
+      setAnimatedVootes(totalVootes);
+    }
+  }, [totalVootes]);
+
+  // Reset animation state when component mounts
+  useEffect(() => {
+    animationRunRef.current = false;
+    setAnimatedVootes(0);
   }, []);
 
   // Function to get random category and its top 2 items
@@ -670,6 +812,10 @@ function App() {
   const [lastWinnerId, setLastWinnerId] = useState(null);
   const [lockInReady, setLockInReady] = useState(false);
   const [gameLoading, setGameLoading] = useState(false);
+  const [consecutiveWins, setConsecutiveWins] = useState(0);
+  const [currentWinnerId, setCurrentWinnerId] = useState(null);
+  const [currentEloRange, setCurrentEloRange] = useState(0); // Track current ELO range being shown
+  const [usedMatchups, setUsedMatchups] = useState(new Set()); // Track used matchups to avoid repetition
 
   // Animation for new challenger fade-in
   const [fadeInIdx, setFadeInIdx] = useState(null); // 0 or 1 for which side fades in
@@ -725,28 +871,42 @@ function App() {
       setGameLoading(true);
       fetchItemsForCategory(selectedCategory.id).then(items => {
         setGameItems(items);
-        // Pick two random items from the lower half of indexScore
+        // Start with items from the lower ELO range, not necessarily the two lowest
         if (items.length >= 2) {
           const sorted = [...items].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
-          const lowerHalf = sorted.slice(0, Math.ceil(sorted.length / 2));
+          // Pick from the bottom 25% of items to ensure lower ELO but add variety
+          const bottomQuarter = Math.max(2, Math.ceil(sorted.length * 0.25));
+          const lowerRange = sorted.slice(0, bottomQuarter);
+          
+          // Pick two random items from the lower range
           const idxs = [];
-          while (idxs.length < 2 && lowerHalf.length > 1) {
-            const idx = Math.floor(Math.random() * lowerHalf.length);
+          while (idxs.length < 2 && lowerRange.length > 1) {
+            const idx = Math.floor(Math.random() * lowerRange.length);
             if (!idxs.includes(idx)) idxs.push(idx);
           }
-          setCurrentPair([lowerHalf[idxs[0]], lowerHalf[idxs[1]]]);
+          
+          const initialPair = [lowerRange[idxs[0]], lowerRange[idxs[1]]];
+          setCurrentPair(initialPair);
+          setCurrentEloRange(0); // Start at the bottom
+          setUsedMatchups(new Set([`${initialPair[0].id}-${initialPair[1].id}`])); // Mark initial matchup as used
         } else {
           setCurrentPair([null, null]);
         }
         setLastWinnerId(null);
         setLockInReady(false);
         setGameLoading(false);
+        setConsecutiveWins(0);
+        setCurrentWinnerId(null);
       });
     } else {
       setGameItems([]);
       setCurrentPair([null, null]);
       setLastWinnerId(null);
       setLockInReady(false);
+      setConsecutiveWins(0);
+      setCurrentWinnerId(null);
+      setCurrentEloRange(0);
+      setUsedMatchups(new Set());
     }
   }, [activeTab, selectedCategory]);
 
@@ -775,7 +935,23 @@ function App() {
     // Set which item was voted for (for border styling)
     setVotedItemIdx(winnerIdx);
     
+    const winner = items[winnerIdx];
     const loserIdx = 1 - winnerIdx;
+    
+    // Track consecutive wins for regular mode
+    if (!trendingMode) {
+      if (currentWinnerId === winner.id) {
+        setConsecutiveWins(prev => prev + 1);
+        if (consecutiveWins + 1 >= 3) {
+          setLockInReady(true);
+        }
+      } else {
+        setConsecutiveWins(1);
+        setCurrentWinnerId(winner.id);
+        setLockInReady(false);
+      }
+    }
+    
     setDisappearingIdx(loserIdx);
     (loserIdx === 0 ? disappearApi0 : disappearApi1).start({ opacity: 0, config: { duration: 220 } });
     // Pulse the image of the winning item
@@ -840,6 +1016,11 @@ function App() {
         // Increment upvotes for the trending category
         updateDoc(doc(db, 'categories', trendingCategory.id), { upvotes: increment(1) });
         
+        // Update total Vootes directly without animation
+        setTotalVootes(prev => prev + 1);
+        setAnimatedVootes(prev => prev + 1);
+        setTimeout(() => fetchTotalVootes(), 100);
+        
         if (trendingRound >= 5) {
           // End trending mode
           setTrendingMode(false);
@@ -877,16 +1058,57 @@ function App() {
         if (it.id === updatedLoser.id) return { ...it, indexScore: updatedLoser.indexScore };
         return it;
       });
-      // Winner stays, pick new challenger from local items
+      // Winner stays, pick new challenger from progressively better items
       const winnerItem = updatedGameItems.find(it => it.id === updatedWinner.id);
-      let candidates = updatedGameItems.filter(it => it.id !== winnerItem.id && it.indexScore > loser.indexScore);
-      if (candidates.length === 0) {
-        candidates = updatedGameItems.filter(it => it.id !== winnerItem.id);
-      }
+      const sorted = [...updatedGameItems].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
+      
+      // Progress to next ELO range (show better items)
+      const nextRange = Math.min(currentEloRange + 1, Math.floor(sorted.length / 2));
+      setCurrentEloRange(nextRange);
+      
+      // Pick challenger from current ELO range, avoiding used matchups
+      const currentRangeStart = nextRange * 2;
+      const currentRangeEnd = Math.min(currentRangeStart + 4, sorted.length);
+      let availableChallengers = sorted.slice(currentRangeStart, currentRangeEnd).filter(it => it.id !== winnerItem.id);
+      
+      // Filter out challengers that would create already-used matchups
+      availableChallengers = availableChallengers.filter(challenger => {
+        const matchup1 = `${winnerItem.id}-${challenger.id}`;
+        const matchup2 = `${challenger.id}-${winnerItem.id}`;
+        return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
+      });
+      
       let newChallenger = null;
-      if (candidates.length > 0) {
-        newChallenger = candidates[Math.floor(Math.random() * candidates.length)];
+      if (availableChallengers.length > 0) {
+        newChallenger = availableChallengers[Math.floor(Math.random() * availableChallengers.length)];
+      } else {
+        // If no unused challengers in current range, try next range
+        const nextRangeStart = currentRangeEnd;
+        const nextRangeEnd = Math.min(nextRangeStart + 4, sorted.length);
+        let nextChallengers = sorted.slice(nextRangeStart, nextRangeEnd).filter(it => it.id !== winnerItem.id);
+        
+        // Filter out used matchups from next range too
+        nextChallengers = nextChallengers.filter(challenger => {
+          const matchup1 = `${winnerItem.id}-${challenger.id}`;
+          const matchup2 = `${challenger.id}-${winnerItem.id}`;
+          return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
+        });
+        
+        if (nextChallengers.length > 0) {
+          newChallenger = nextChallengers[Math.floor(Math.random() * nextChallengers.length)];
+        }
       }
+      
+      // If still no unused challenger, try any item not the winner
+      if (!newChallenger) {
+        const allOtherItems = updatedGameItems.filter(it => it.id !== winnerItem.id);
+        newChallenger = allOtherItems[Math.floor(Math.random() * allOtherItems.length)];
+      }
+      
+      // Mark this matchup as used
+      const newMatchup = `${winnerItem.id}-${newChallenger.id}`;
+      setUsedMatchups(prev => new Set([...prev, newMatchup]));
+      
       const newPair = [...currentPair];
       newPair[winnerIdx] = winnerItem;
       newPair[loserIdx] = newChallenger;
@@ -905,6 +1127,10 @@ function App() {
       if (selectedCategory) {
         setCategoryUpvotes(u => (u || 0) + 1);
         updateDoc(doc(db, 'categories', selectedCategory.id), { upvotes: increment(1) });
+        // Update total Vootes directly without animation
+        setTotalVootes(prev => prev + 1);
+        setAnimatedVootes(prev => prev + 1);
+        setTimeout(() => fetchTotalVootes(), 100);
       }
     }, 240); // match fade out duration
   }
@@ -928,7 +1154,7 @@ function App() {
     // Optimistically update local gameItems
     let updatedGameItems = gameItems.map(it => {
       if (it.id === updatedWinner.id) return { ...it, indexScore: updatedWinner.indexScore };
-      if (it.id === updatedLoser.id) return { ...it, indexScore: updatedLoser.indexScore };
+      if (it.id === updatedLoser.id) return { ...it, indexScore: updatedLoser.score };
       return it;
     });
     setGameItems(updatedGameItems);
@@ -947,13 +1173,50 @@ function App() {
     setLastWinnerId(null);
     setLockInReady(false);
     setWinnerStreak(1);
+    setConsecutiveWins(0);
+    setCurrentWinnerId(null);
   }
 
-  // Format upvotes (e.g. 1.1k, 1.1M)
+  // Handle Lock In Your #1 button click
+  async function handleLockInYour1() {
+    if (!currentWinnerId) return;
+    
+    // Pick two new random items from the lower half of the scale
+    const sorted = [...gameItems].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
+    const lowerHalf = sorted.slice(0, Math.ceil(sorted.length / 2));
+    
+    if (lowerHalf.length >= 2) {
+      const idxs = [];
+      while (idxs.length < 2 && lowerHalf.length > 1) {
+        const i = Math.floor(Math.random() * lowerHalf.length);
+        if (!idxs.includes(i)) idxs.push(i);
+      }
+      const newPair = [lowerHalf[idxs[0]], lowerHalf[idxs[1]]];
+      setCurrentPair(newPair);
+      // Mark new matchup as used
+      setUsedMatchups(new Set([`${newPair[0].id}-${newPair[1].id}`]));
+    } else if (lowerHalf.length === 1) {
+      // If only one item in lower half, pick another random item
+      const otherItems = gameItems.filter(it => it.id !== lowerHalf[0].id);
+      if (otherItems.length > 0) {
+        const randomItem = otherItems[Math.floor(Math.random() * otherItems.length)];
+        const newPair = [lowerHalf[0], randomItem];
+        setCurrentPair(newPair);
+        // Mark new matchup as used
+        setUsedMatchups(new Set([`${newPair[0].id}-${newPair[1].id}`]));
+      }
+    }
+    
+    // Reset states
+    setLastWinnerId(null);
+    setLockInReady(false);
+    setConsecutiveWins(0);
+    setCurrentWinnerId(null);
+  }
+
+  // Format upvotes (e.g. 1,234, 1,234,567)
   function formatUpvotes(num) {
-    if (num >= 1_000_000) return (num / 1_000_000).toFixed(1) + 'M';
-    if (num >= 1_000) return (num / 1_000).toFixed(1) + 'k';
-    return num;
+    return num.toLocaleString();
   }
 
   // When loading a category, fetch upvotes
@@ -1165,7 +1428,7 @@ function App() {
         </CategoriesWrapper>
         <DropdownPanel open={openDropdown !== null}>
           {openDropdown !== null && (
-            <SportsDropdownGrid>
+              <SportsDropdownGrid>
               {allCategories
                 .filter(cat => {
                   const dropdownType = categories[openDropdown];
@@ -1187,8 +1450,8 @@ function App() {
                   <SportsButton
                     key={cat.id}
                     onClick={() => {
-                      setSelectedCategory({ id: cat.id, name: cat.name });
-                      setOpenDropdown(null);
+                        setSelectedCategory({ id: cat.id, name: cat.name });
+                        setOpenDropdown(null);
                       // Exit trending mode when category is selected
                       setTrendingMode(false);
                       setTrendingRound(0);
@@ -1200,9 +1463,12 @@ function App() {
                     {cat.name}
                   </SportsButton>
                 ))}
-            </SportsDropdownGrid>
+              </SportsDropdownGrid>
           )}
         </DropdownPanel>
+        <TotalVootesDisplay>
+          <span style={{ fontWeight: '900' }}>{formatUpvotes(animatedVootes)}</span> Vootes
+        </TotalVootesDisplay>
         <ContentBlock ref={contentBlockRef} style={{ flexDirection: 'column', alignItems: 'stretch', padding: 0, position: 'relative', overflow: 'visible' }}>
           {/* Info block is now in normal flow, so tabs and images are always below */}
           {selectedCategory && categoryInfo && (
@@ -1275,12 +1541,17 @@ function App() {
                         </ImagePlaceholder>
                       </animated.div>
                     </animated.div>
-                    <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
+                    <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 10 }}>
                       <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, width: '100%' }}>
                         <animated.div style={{ scale: namePulse0.scale }}>
-                          <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[0]?.name || `Item 1`}</ItemName>
-                        </animated.div>
+                        <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[0]?.name || `Item 1`}</ItemName>
                       </animated.div>
+                      </animated.div>
+                      {lockInReady && currentWinnerId === currentPair[0]?.id && (
+                        <div style={{ textAlign: 'center', marginTop: 8 }}>
+                          <button style={{ padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', width: 'auto', minWidth: 120 }} onClick={() => handleLockInYour1()} disabled={gameLoading}>Lock In Your #1</button>
+                        </div>
+                      )}
                     </div>
                     {/* Lock In as #1 button logic for left item */}
                     <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
@@ -1303,9 +1574,6 @@ function App() {
                         }} onClick={() => handleLockInAs1(0)}>Lock In as #1</button>
                       )}
                     </div>
-                    {lockInReady && (
-                      <button style={{ marginTop: 12, padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 15, cursor: 'pointer', width: 240 }} onClick={() => handleLockInAs1(0)} disabled={gameLoading}>Lock In</button>
-                    )}
                   </animated.div>
                   <div style={{ position: 'absolute', left: '50%', top: '44%', transform: 'translate(-50%, -50%)', minWidth: 120, maxWidth: 140, minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 3 }}>
                     <OrText style={{ margin: 0, padding: 0, minWidth: 0, textAlign: 'center', wordBreak: 'break-word' }}>OR</OrText>
@@ -1332,10 +1600,17 @@ function App() {
                         </ImagePlaceholder>
                       </animated.div>
                     </animated.div>
-                    <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
+                    <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 10 }}>
                       <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, width: '100%' }}>
-                        <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[1]?.name || `Item 2`}</ItemName>
+                        <animated.div style={{ scale: namePulse1.scale }}>
+                          <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[1]?.name || `Item 2`}</ItemName>
+                        </animated.div>
                       </animated.div>
+                      {lockInReady && currentWinnerId === currentPair[1]?.id && (
+                        <div style={{ textAlign: 'center', marginTop: 8 }}>
+                          <button style={{ padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', width: 'auto', minWidth: 120 }} onClick={() => handleLockInYour1()} disabled={gameLoading}>Lock In Your #1</button>
+                        </div>
+                      )}
                     </div>
                     {/* Lock In as #1 button logic for right item */}
                     <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
