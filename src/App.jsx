@@ -24,6 +24,19 @@ const Container = styled.div`
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  padding: 0 16px;
+  box-sizing: border-box;
+  
+  @media (max-width: 768px) {
+    padding: 0 12px;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 0 8px;
+  }
 `;
 
 const AnimatedTitleWrapper = styled.div`
@@ -37,10 +50,51 @@ const AnimatedTitleWrapper = styled.div`
   top: 0;
   z-index: 100;
   background: #fff;
+  padding: 0 16px;
+  box-sizing: border-box;
   
   @media (max-width: 768px) {
-    margin-top: -5px;
     padding: 0 12px;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 0 8px;
+  }
+`;
+
+const ResponsiveTitle = styled.div`
+  text-align: center;
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+  font-weight: 800;
+  font-size: 6.0rem;
+  letter-spacing: -2px;
+  color: ${DARKER_BLUE};
+  margin-bottom: 4px;
+  position: relative;
+  
+  @media (max-width: 768px) {
+    font-size: 4.5rem;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 3.5rem;
+  }
+`;
+
+const ResponsiveSubtitle = styled.div`
+  text-align: center;
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+  font-weight: 400;
+  font-size: 1.2rem;
+  color: #666666;
+  margin-top: -24px;
+  
+  @media (max-width: 768px) {
+    font-size: 1.1rem;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 1.0rem;
   }
 `;
 
@@ -65,7 +119,7 @@ const TotalVootesDisplay = styled.div`
 
 const CenteredBarWrapper = styled.div`
   width: ${BAR_WIDTH_NUM}px;
-  max-width: calc(100vw - 32px);
+  max-width: 100%;
   margin: 0 auto;
   box-sizing: border-box;
   overflow: visible;
@@ -74,8 +128,13 @@ const CenteredBarWrapper = styled.div`
   transition: margin-top 0.35s cubic-bezier(.77,0,.18,1);
   
   @media (max-width: 768px) {
-    width: calc(100vw - 24px);
-    max-width: none;
+    width: 100%;
+    max-width: 500px;
+  }
+  
+  @media (max-width: 480px) {
+    width: 100%;
+    max-width: 100%;
   }
 `;
 
@@ -125,11 +184,6 @@ const SearchInput = styled.input`
   text-align: left;
   position: relative;
   z-index: 2;
-  
-  @media (max-width: 768px) {
-    padding: 12px 20px 12px 20px;
-    font-size: 1rem;
-  }
 `;
 
 const SearchIcon = styled(FiSearch)`
@@ -169,11 +223,6 @@ const CategoryButton = styled.button`
     color: #22223b;
     outline: none;
   }
-  
-  @media (max-width: 768px) {
-    font-size: 0.9rem;
-    padding: 8px 0;
-  }
 `;
 
 const DropdownIconWrapper = styled.span`
@@ -195,11 +244,6 @@ const DropdownPanel = styled.div`
   z-index: 2;
   box-sizing: border-box;
   overflow: hidden;
-  
-  @media (max-width: 768px) {
-    padding: 20px 16px;
-    border-radius: 0 0 12px 12px;
-  }
 `;
 
 const ContentBlock = styled.div`
@@ -216,12 +260,18 @@ const ContentBlock = styled.div`
   color: #22223b;
   box-shadow: 0 2px 16px rgba(34,34,59,0.04);
   padding: 48px;
+  box-sizing: border-box;
   
   @media (max-width: 768px) {
-    max-width: calc(100vw - 24px);
-    margin: 16px 12px 0 12px;
     padding: 24px 16px;
     min-height: 400px;
+    margin-top: 24px;
+  }
+  
+  @media (max-width: 480px) {
+    padding: 16px 12px;
+    min-height: 350px;
+    margin-top: 16px;
     border-radius: 12px;
   }
 `;
@@ -308,9 +358,13 @@ const UpvoteImagesRow = styled.div`
   
   @media (max-width: 768px) {
     gap: 20px;
-    height: 200px;
+    height: 220px;
+  }
+  
+  @media (max-width: 480px) {
+    gap: 12px;
+    height: 180px;
     flex-direction: column;
-    align-items: center;
   }
 `;
 
@@ -329,10 +383,14 @@ const ImagePlaceholder = styled.div`
   overflow: hidden;
   
   @media (max-width: 768px) {
-    width: 180px;
-    height: 180px;
+    width: 200px;
+    height: 200px;
+  }
+  
+  @media (max-width: 480px) {
+    width: 160px;
+    height: 160px;
     border-radius: 12px;
-    font-size: 1rem;
   }
 `;
 
@@ -341,6 +399,16 @@ const OrText = styled.div`
   font-weight: 700;
   color: #b0b0b0;
   margin: 0 12px;
+  
+  @media (max-width: 768px) {
+    font-size: 1.3rem;
+    margin: 0 8px;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 1.1rem;
+    margin: 8px 0;
+  }
 `;
 
 const ItemName = styled.div`
@@ -352,6 +420,10 @@ const ItemName = styled.div`
   
   @media (max-width: 768px) {
     font-size: 1.1rem;
+  }
+  
+  @media (max-width: 480px) {
+    font-size: 1.0rem;
     margin-top: 4px;
   }
 `;
@@ -453,40 +525,10 @@ const SportsButton = styled.div`
   }
 `;
 
-const VootesTitle = styled.div`
-  text-align: center;
-  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-  font-weight: 800;
-  font-size: 6.0rem;
-  letter-spacing: -2px;
-  color: ${DARKER_BLUE};
-  margin-bottom: 4px;
-  position: relative;
-  
-  @media (max-width: 768px) {
-    font-size: 4.5rem;
-    letter-spacing: -1px;
-  }
-`;
-
-const VootesSubtitle = styled.div`
-  text-align: center;
-  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
-  font-weight: 400;
-  font-size: 1.2rem;
-  color: #666666;
-  margin-top: -24px;
-  
-  @media (max-width: 768px) {
-    font-size: 1.1rem;
-    margin-top: -20px;
-  }
-`;
-
 function AnimatedUpVoteTitle({ logoRef }) {
   return (
     <AnimatedTitleWrapper ref={logoRef}>
-      <VootesTitle>
+      <ResponsiveTitle>
         <div style={{
           position: 'relative',
           display: 'inline-block'
@@ -510,10 +552,10 @@ function AnimatedUpVoteTitle({ logoRef }) {
             Vootes
           </div>
         </div>
-      </VootesTitle>
-      <VootesSubtitle>
+      </ResponsiveTitle>
+      <ResponsiveSubtitle>
         Every vote counts. Especially yours.
-      </VootesSubtitle>
+      </ResponsiveSubtitle>
       <style jsx>{`
         @keyframes colorShift {
           0%, 20% { opacity: 0; }
