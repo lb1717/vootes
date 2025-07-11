@@ -27,16 +27,7 @@ const Container = styled.div`
   width: 100%;
   max-width: 100vw;
   overflow-x: hidden;
-  padding: 0 16px;
   box-sizing: border-box;
-  
-  @media (max-width: 768px) {
-    padding: 0 12px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 0 8px;
-  }
 `;
 
 const AnimatedTitleWrapper = styled.div`
@@ -50,16 +41,7 @@ const AnimatedTitleWrapper = styled.div`
   top: 0;
   z-index: 100;
   background: #fff;
-  padding: 0 16px;
   box-sizing: border-box;
-  
-  @media (max-width: 768px) {
-    padding: 0 12px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 0 8px;
-  }
 `;
 
 const ResponsiveTitle = styled.div`
@@ -126,16 +108,6 @@ const CenteredBarWrapper = styled.div`
   position: relative;
   z-index: 20;
   transition: margin-top 0.35s cubic-bezier(.77,0,.18,1);
-  
-  @media (max-width: 768px) {
-    width: 100%;
-    max-width: 500px;
-  }
-  
-  @media (max-width: 480px) {
-    width: 100%;
-    max-width: 100%;
-  }
 `;
 
 const AnimatedBorderSVG = styled.svg`
@@ -261,19 +233,6 @@ const ContentBlock = styled.div`
   box-shadow: 0 2px 16px rgba(34,34,59,0.04);
   padding: 48px;
   box-sizing: border-box;
-  
-  @media (max-width: 768px) {
-    padding: 24px 16px;
-    min-height: 400px;
-    margin-top: 24px;
-  }
-  
-  @media (max-width: 480px) {
-    padding: 16px 12px;
-    min-height: 350px;
-    margin-top: 16px;
-    border-radius: 12px;
-  }
 `;
 
 const TabHeaderRow = styled.div`
@@ -355,17 +314,6 @@ const UpvoteImagesRow = styled.div`
   gap: 40px;
   width: 100%;
   height: 260px;
-  
-  @media (max-width: 768px) {
-    gap: 20px;
-    height: 220px;
-  }
-  
-  @media (max-width: 480px) {
-    gap: 12px;
-    height: 180px;
-    flex-direction: column;
-  }
 `;
 
 const ImagePlaceholder = styled.div`
@@ -381,17 +329,6 @@ const ImagePlaceholder = styled.div`
   box-shadow: 0 2px 8px rgba(34,34,59,0.06);
   position: relative;
   overflow: hidden;
-  
-  @media (max-width: 768px) {
-    width: 200px;
-    height: 200px;
-  }
-  
-  @media (max-width: 480px) {
-    width: 160px;
-    height: 160px;
-    border-radius: 12px;
-  }
 `;
 
 const OrText = styled.div`
@@ -399,16 +336,6 @@ const OrText = styled.div`
   font-weight: 700;
   color: #b0b0b0;
   margin: 0 12px;
-  
-  @media (max-width: 768px) {
-    font-size: 1.3rem;
-    margin: 0 8px;
-  }
-  
-  @media (max-width: 480px) {
-    font-size: 1.1rem;
-    margin: 8px 0;
-  }
 `;
 
 const ItemName = styled.div`
@@ -417,15 +344,6 @@ const ItemName = styled.div`
   color: #111;
   font-weight: 600;
   text-align: center;
-  
-  @media (max-width: 768px) {
-    font-size: 1.1rem;
-  }
-  
-  @media (max-width: 480px) {
-    font-size: 1.0rem;
-    margin-top: 4px;
-  }
 `;
 
 // Rank list styles
@@ -528,7 +446,16 @@ const SportsButton = styled.div`
 function AnimatedUpVoteTitle({ logoRef }) {
   return (
     <AnimatedTitleWrapper ref={logoRef}>
-      <ResponsiveTitle>
+      <div style={{
+        textAlign: 'center',
+        fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
+        fontWeight: '800',
+        fontSize: '6.0rem',
+        letterSpacing: '-2px',
+        color: DARKER_BLUE,
+        marginBottom: '4px',
+        position: 'relative'
+      }}>
         <div style={{
           position: 'relative',
           display: 'inline-block'
@@ -552,10 +479,17 @@ function AnimatedUpVoteTitle({ logoRef }) {
             Vootes
           </div>
         </div>
-      </ResponsiveTitle>
-      <ResponsiveSubtitle>
+      </div>
+      <div style={{
+        textAlign: 'center',
+        fontFamily: "'Inter', 'Segoe UI', Arial, sans-serif",
+        fontWeight: '400',
+        fontSize: '1.2rem',
+        color: '#666666',
+        marginTop: '-24px'
+      }}>
         Every vote counts. Especially yours.
-      </ResponsiveSubtitle>
+      </div>
       <style jsx>{`
         @keyframes colorShift {
           0%, 20% { opacity: 0; }
