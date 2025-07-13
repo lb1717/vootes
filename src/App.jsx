@@ -1,13 +1,14 @@
 import styled from 'styled-components'
 import './App.css'
 import { FiSearch, FiChevronDown, FiChevronUp } from 'react-icons/fi'
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import AdminPanel from './AdminPanel'
 import BulkUploadForm from './BulkUploadForm'
 import { fetchCategories, fetchCategoryById, fetchCategoryUpvotes, fetchItemsForCategory } from './dbUtils'
 import { useSpring, animated, useSprings, config } from '@react-spring/web';
 import { doc, updateDoc, increment, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
+import { useAnalytics } from './hooks/useAnalytics';
 
 const BABY_BLUE = '#b3d8fd';
 const NEON_BABY_BLUE = '#4fd1ff';
@@ -463,6 +464,7 @@ const ViewportWrapper = styled.div`
     transform-origin: top center;
     width: 620px;
     max-width: 620px;
+    min-height: 100vh;
   `}
 `;
 
@@ -556,8 +558,16 @@ function App() {
   useEffect(() => {
     const calculateViewport = () => {
       const windowWidth = window.innerWidth;
+      const windowHeight = window.innerHeight;
+      
+      // Base content width is 620px
+      const baseContentWidth = 620;
+      
       if (windowWidth <= 619) {
-        setViewportScale(610 / 620);
+        // Calculate scale to fit content width with 5px safe space on each side
+        const availableWidth = windowWidth - 10; // 5px safe space on each side
+        const scale = Math.min(availableWidth / baseContentWidth, 1);
+        setViewportScale(scale);
         setIsMobile(true);
       } else {
         setViewportScale(1);
@@ -958,6 +968,14 @@ function App() {
     
     const winner = items[winnerIdx];
     const loserIdx = 1 - winnerIdx;
+    const loser = items[loserIdx];
+    
+    // Track analytics
+    if (trendingMode) {
+      trackTrendingVote(trendingCategory?.name || 'Unknown', winner.name, loser.name, trendingRound);
+    } else if (selectedCategory) {
+      trackVote(selectedCategory.name, winner.name, winner.name, loser.name);
+    }
     
     // Track consecutive wins for regular mode
     if (!trendingMode) {
@@ -1160,6 +1178,12 @@ function App() {
   async function handleLockInAs1(idx) {
     if (!currentPair[idx] || !currentPair[1-idx]) return;
     const winner = currentPair[idx];
+    
+    // Track lock-in analytics
+    if (selectedCategory) {
+      trackLockIn(selectedCategory.name, winner.name);
+    }
+    
     // Pick a random challenger from the lower half (not the winner)
     const sorted = [...gameItems].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
     const lowerHalf = sorted.slice(0, Math.ceil(sorted.length / 2)).filter(it => it.id !== winner.id);
@@ -1201,6 +1225,14 @@ function App() {
   // Handle Lock In Your #1 button click
   async function handleLockInYour1() {
     if (!currentWinnerId) return;
+    
+    // Track lock-in analytics
+    if (selectedCategory) {
+      const winnerItem = gameItems.find(item => item.id === currentWinnerId);
+      if (winnerItem) {
+        trackLockIn(selectedCategory.name, winnerItem.name);
+      }
+    }
     
     // Pick two new random items from the lower half of the scale
     const sorted = [...gameItems].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
@@ -1339,118 +1371,123 @@ function App() {
     }
   }, [selectedCategory, pendingScroll]);
 
+  // Analytics hook
+  const { trackVote, trackCategorySelect, trackTrendingVote, trackLockIn } = useAnalytics();
+
   return (
     <ViewportWrapper isMobile={isMobile} scale={viewportScale}>
-      <Container>
-        <AnimatedUpVoteTitle logoRef={logoRef} />
-        <SearchWrapper>
-          <CenteredBarWrapper>
-            <SearchBarDropdownWrapper>
-              <SearchBar>
-                <AnimatedBorderSVG
-                  width={BAR_WIDTH_NUM}
-                  height={BAR_HEIGHT_NUM}
-                >
-                  <rect
-                    x={1}
-                    y={1}
-                    width={BAR_WIDTH_NUM - 2}
-                    height={BAR_HEIGHT_NUM - 2}
-                    rx={BORDER_RADIUS}
-                    fill="none"
-                    stroke={searchFocused ? NEON_BABY_BLUE : GREY_BABY_BLUE}
-                    strokeWidth={2}
-                    strokeDasharray={borderLength}
-                    strokeDashoffset={searchFocused ? 0 : borderLength}
-                    style={{
-                      transition: searchFocused
-                        ? 'stroke-dashoffset 0.9s cubic-bezier(.77,0,.18,1), stroke 0.2s'
-                        : 'stroke 0.2s',
-                    }}
-                  />
-                </AnimatedBorderSVG>
-                <SearchInput
-                  type="text"
-                  placeholder="Search..."
-                  value={searchTerm}
-                  onChange={e => {
-                    setSearchTerm(e.target.value);
-                    setShowResults(true);
-                  }}
-                  onFocus={() => {
-                    setSearchFocused(true);
-                    setShowResults(true);
-                  }}
-                  onBlur={() => {
-                    setSearchFocused(false);
-                    setTimeout(() => setShowResults(false), 120); // allow click
+    <Container>
+      <AnimatedUpVoteTitle logoRef={logoRef} />
+      <SearchWrapper>
+        <CenteredBarWrapper>
+          <SearchBarDropdownWrapper>
+            <SearchBar>
+              <AnimatedBorderSVG
+                width={BAR_WIDTH_NUM}
+                height={BAR_HEIGHT_NUM}
+              >
+                <rect
+                  x={1}
+                  y={1}
+                  width={BAR_WIDTH_NUM - 2}
+                  height={BAR_HEIGHT_NUM - 2}
+                  rx={BORDER_RADIUS}
+                  fill="none"
+                  stroke={searchFocused ? NEON_BABY_BLUE : GREY_BABY_BLUE}
+                  strokeWidth={2}
+                  strokeDasharray={borderLength}
+                  strokeDashoffset={searchFocused ? 0 : borderLength}
+                  style={{
+                    transition: searchFocused
+                      ? 'stroke-dashoffset 0.9s cubic-bezier(.77,0,.18,1), stroke 0.2s'
+                      : 'stroke 0.2s',
                   }}
                 />
-                <SearchIcon />
-              </SearchBar>
-              <animated.div style={{ height: dropdownSpring.height }}>
-                <SearchResultsDropdown visible={showResults && searchTerm.trim() !== ''}>
-                  {searchTerm.trim() !== '' && (
-                    searchResults.length > 0 ? (
-                      searchResults.slice(0, 3).map((cat, idx, arr) => (
-                        <React.Fragment key={cat.id}>
-                          <SearchResultItem key={cat.id} onClick={() => {
-                            setSelectedCategory({ id: cat.id, name: cat.name });
-                            setShowResults(false);
-                            setSearchTerm('');
+              </AnimatedBorderSVG>
+              <SearchInput
+                type="text"
+                placeholder="Search..."
+                value={searchTerm}
+                onChange={e => {
+                  setSearchTerm(e.target.value);
+                  setShowResults(true);
+                }}
+                onFocus={() => {
+                  setSearchFocused(true);
+                  setShowResults(true);
+                }}
+                onBlur={() => {
+                  setSearchFocused(false);
+                  setTimeout(() => setShowResults(false), 120); // allow click
+                }}
+              />
+              <SearchIcon />
+            </SearchBar>
+            <animated.div style={{ height: dropdownSpring.height }}>
+              <SearchResultsDropdown visible={showResults && searchTerm.trim() !== ''}>
+                {searchTerm.trim() !== '' && (
+                  searchResults.length > 0 ? (
+                    searchResults.slice(0, 3).map((cat, idx, arr) => (
+                      <React.Fragment key={cat.id}>
+                        <SearchResultItem key={cat.id} onClick={() => {
+                          setSelectedCategory({ id: cat.id, name: cat.name });
+                          setShowResults(false);
+                          setSearchTerm('');
+                          // Track category selection
+                          trackCategorySelect(cat.name);
                             // Exit trending mode when category is selected
                             setTrendingMode(false);
                             setTrendingRound(0);
                             setTrendingCategory(null);
                             setTrendingItems([null, null]);
                             setTrendingCompleted(false); // Reset completion status
-                            setTimeout(() => {
-                              if (contentBlockRef.current && logoRef.current) {
-                                const logoBottom = logoRef.current.getBoundingClientRect().bottom;
-                                const contentTop = contentBlockRef.current.getBoundingClientRect().top;
-                                const scrollY = window.scrollY || window.pageYOffset;
-                                const offset = contentTop - logoBottom;
-                                window.scrollTo({
-                                  top: scrollY + offset,
-                                  behavior: 'smooth'
-                                });
-                              }
-                            }, 100);
-                          }} style={{ cursor: 'pointer' }}>
-                            {cat.name}
-                          </SearchResultItem>
-                          {idx < arr.length - 1 && <Divider />}
-                        </React.Fragment>
-                      ))
-                    ) : (
-                      <SearchResultItem style={{ color: '#888', cursor: 'default' }}>No results match your search</SearchResultItem>
-                    )
-                  )}
-                </SearchResultsDropdown>
-              </animated.div>
-            </SearchBarDropdownWrapper>
-          </CenteredBarWrapper>
-        </SearchWrapper>
-        <CenteredBarWrapper style={{ position: 'relative' }}>
-          <CategoriesWrapper ref={categoriesWrapperRef}>
-            {categories.map((cat, idx) => (
-              <CategoryButton
-                key={cat}
-                style={{ borderRadius: openDropdown === idx ? '16px 16px 0 0' : '16px', borderBottom: openDropdown === idx ? '1px solid #e9ecef' : 'none', transition: 'border-radius 0.2s' }}
-                onClick={() => {
-                  setOpenDropdown(openDropdown === idx ? null : idx);
-                }}
-              >
-                {cat}
-                <DropdownIconWrapper>
-                  <FiChevronDown style={{ transform: openDropdown === idx ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} size={20} />
-                </DropdownIconWrapper>
-              </CategoryButton>
-            ))}
-          </CategoriesWrapper>
-          <DropdownPanel open={openDropdown !== null}>
-            {openDropdown !== null && (
-                <SportsDropdownGrid>
+                          setTimeout(() => {
+                            if (contentBlockRef.current && logoRef.current) {
+                              const logoBottom = logoRef.current.getBoundingClientRect().bottom;
+                              const contentTop = contentBlockRef.current.getBoundingClientRect().top;
+                              const scrollY = window.scrollY || window.pageYOffset;
+                              const offset = contentTop - logoBottom;
+                              window.scrollTo({
+                                top: scrollY + offset,
+                                behavior: 'smooth'
+                              });
+                            }
+                          }, 100);
+                        }} style={{ cursor: 'pointer' }}>
+                          {cat.name}
+                        </SearchResultItem>
+                        {idx < arr.length - 1 && <Divider />}
+                      </React.Fragment>
+                    ))
+                  ) : (
+                    <SearchResultItem style={{ color: '#888', cursor: 'default' }}>No results match your search</SearchResultItem>
+                  )
+                )}
+              </SearchResultsDropdown>
+            </animated.div>
+          </SearchBarDropdownWrapper>
+        </CenteredBarWrapper>
+      </SearchWrapper>
+      <CenteredBarWrapper style={{ position: 'relative' }}>
+        <CategoriesWrapper ref={categoriesWrapperRef}>
+          {categories.map((cat, idx) => (
+            <CategoryButton
+              key={cat}
+              style={{ borderRadius: openDropdown === idx ? '16px 16px 0 0' : '16px', borderBottom: openDropdown === idx ? '1px solid #e9ecef' : 'none', transition: 'border-radius 0.2s' }}
+              onClick={() => {
+                setOpenDropdown(openDropdown === idx ? null : idx);
+              }}
+            >
+              {cat}
+              <DropdownIconWrapper>
+                <FiChevronDown style={{ transform: openDropdown === idx ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} size={20} />
+              </DropdownIconWrapper>
+            </CategoryButton>
+          ))}
+        </CategoriesWrapper>
+        <DropdownPanel open={openDropdown !== null}>
+          {openDropdown !== null && (
+              <SportsDropdownGrid>
                 {allCategories
                   .filter(cat => {
                     const dropdownType = categories[openDropdown];
@@ -1471,9 +1508,11 @@ function App() {
                   .map(cat => (
                     <SportsButton
                       key={cat.id}
-                      onClick={() => {
-                          setSelectedCategory({ id: cat.id, name: cat.name });
-                          setOpenDropdown(null);
+                    onClick={() => {
+                        setSelectedCategory({ id: cat.id, name: cat.name });
+                        setOpenDropdown(null);
+                        // Track category selection
+                        trackCategorySelect(cat.name);
                         // Exit trending mode when category is selected
                         setTrendingMode(false);
                         setTrendingRound(0);
@@ -1485,23 +1524,23 @@ function App() {
                       {cat.name}
                     </SportsButton>
                   ))}
-                </SportsDropdownGrid>
-            )}
-          </DropdownPanel>
+              </SportsDropdownGrid>
+          )}
+        </DropdownPanel>
           <TotalVootesDisplay>
             <span style={{ fontWeight: '900' }}>{formatUpvotes(animatedVootes)}</span> Vootes
           </TotalVootesDisplay>
-          <ContentBlock ref={contentBlockRef} style={{ flexDirection: 'column', alignItems: 'stretch', padding: 0, position: 'relative', overflow: 'visible' }}>
-            {/* Info block is now in normal flow, so tabs and images are always below */}
-            {selectedCategory && categoryInfo && (
-              <div style={{ background: 'transparent', padding: '32px 32px 0 32px', marginBottom: 8 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
-                  <animated.div style={{ fontWeight: 700, fontSize: 22, ...titleSpring }}>{categoryInfo.name}</animated.div>
+        <ContentBlock ref={contentBlockRef} style={{ flexDirection: 'column', alignItems: 'stretch', padding: 0, position: 'relative', overflow: 'visible' }}>
+          {/* Info block is now in normal flow, so tabs and images are always below */}
+          {selectedCategory && categoryInfo && (
+            <div style={{ background: 'transparent', padding: '32px 32px 0 32px', marginBottom: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
+                <animated.div style={{ fontWeight: 700, fontSize: 22, ...titleSpring }}>{categoryInfo.name}</animated.div>
                   <animated.div style={{ fontWeight: 500, fontSize: 18, color: '#2563eb', ...upvotesSpring }}>{categoryUpvotes !== null ? `${formatUpvotes(categoryUpvotes)} Vootes` : ''}</animated.div>
-                </div>
-                <animated.div style={{ fontSize: 15, color: '#444', margin: '8px 0 0 0', textAlign: 'left', ...descSpring }}>{categoryInfo.description}</animated.div>
               </div>
-            )}
+              <animated.div style={{ fontSize: 15, color: '#444', margin: '8px 0 0 0', textAlign: 'left', ...descSpring }}>{categoryInfo.description}</animated.div>
+            </div>
+          )}
             {trendingMode && (
               <div style={{ background: 'transparent', padding: '32px 32px 0 32px', marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
@@ -1509,157 +1548,157 @@ function App() {
                   <animated.div style={{ fontWeight: 500, fontSize: 18, color: '#2563eb', ...upvotesSpring }}>{trendingRound}/5</animated.div>
                 </div>
                 <animated.div style={{ fontSize: 15, color: '#444', margin: '8px 0 0 0', textAlign: 'left', ...descSpring }}>{trendingCategory?.name}</animated.div>
-              </div>
-            )}
-            <div style={{ zIndex: 1, width: '100%' }}>
-              <TabHeaderRow ref={tabHeaderRowRef} style={{ marginBottom: 0 }}>
-                {tabLabels.map((tab, idx) => (
-                  <div key={tab} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-                    <TabHeader
-                      ref={tabRefs[idx]}
-                      active={activeTab === tab}
-                      onClick={() => setActiveTab(tab)}
-                    >
-                      {tab}
-                    </TabHeader>
-                  </div>
-                ))}
-                {/* Animated blue underline, middle 70% of active tab */}
-                <animated.div style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  height: 3,
-                  background: '#2563eb',
-                  borderRadius: 2,
-                  left: underlineSpring.left.to((l) => l + (underlineSpring.width.get() * 0.15)),
-                  width: underlineSpring.width.to((w) => w * 0.7),
-                  zIndex: 2
-                }} />
-              </TabHeaderRow>
             </div>
-            <div style={{ padding: 32, flex: 1 }}>
+          )}
+          <div style={{ zIndex: 1, width: '100%' }}>
+            <TabHeaderRow ref={tabHeaderRowRef} style={{ marginBottom: 0 }}>
+              {tabLabels.map((tab, idx) => (
+                <div key={tab} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                  <TabHeader
+                    ref={tabRefs[idx]}
+                    active={activeTab === tab}
+                    onClick={() => setActiveTab(tab)}
+                  >
+                    {tab}
+                  </TabHeader>
+                </div>
+              ))}
+              {/* Animated blue underline, middle 70% of active tab */}
+              <animated.div style={{
+                position: 'absolute',
+                bottom: 0,
+                height: 3,
+                background: '#2563eb',
+                borderRadius: 2,
+                left: underlineSpring.left.to((l) => l + (underlineSpring.width.get() * 0.15)),
+                width: underlineSpring.width.to((w) => w * 0.7),
+                zIndex: 2
+              }} />
+            </TabHeaderRow>
+          </div>
+          <div style={{ padding: 32, flex: 1 }}>
               {activeTab === 'Vote' && selectedCategory && (
-                <animated.div style={imagesSpring}>
+              <animated.div style={imagesSpring}>
                   <UpvoteImagesRow style={{ alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative', width: '100%', height: 280, marginTop: 20 }}>
-                    <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake1.rotate.to(r => `rotate(${r}deg)`), marginRight: 36 }}>
-                      <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1 }}>
-                        <animated.div style={{ scale: imgPulse0.scale }}>
+                  <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake1.rotate.to(r => `rotate(${r}deg)`), marginRight: 36 }}>
+                    <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1 }}>
+                      <animated.div style={{ scale: imgPulse0.scale }}>
                           <ImagePlaceholder style={{ cursor: gameLoading || !currentPair[0] ? 'default' : 'pointer', opacity: currentPair[0] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 0 ? `2px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={() => !gameLoading && currentPair[0] && handleVote(0)}>
-                            {currentPair[0]?.imageUrl && (
+                          {currentPair[0]?.imageUrl && (
                               <img src={currentPair[0].imageUrl} alt={currentPair[0]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
-                            )}
-                            <animated.div style={{
-                              position: 'absolute',
+                          )}
+                          <animated.div style={{
+                            position: 'absolute',
                               top: 0, left: 0, width: 240, height: 260,
-                              borderRadius: 16,
-                              border: `4px solid ${NEON_GREEN}`,
-                              background: 'transparent',
-                              pointerEvents: 'none',
-                              zIndex: 10,
-                              opacity: borderSpring0.borderOpacity,
-                              boxSizing: 'border-box',
-                              transition: 'opacity 0.3s',
-                            }} />
-                          </ImagePlaceholder>
-                        </animated.div>
+                            borderRadius: 16,
+                            border: `4px solid ${NEON_GREEN}`,
+                            background: 'transparent',
+                            pointerEvents: 'none',
+                            zIndex: 10,
+                            opacity: borderSpring0.borderOpacity,
+                            boxSizing: 'border-box',
+                            transition: 'opacity 0.3s',
+                          }} />
+                        </ImagePlaceholder>
                       </animated.div>
+                    </animated.div>
                       <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 10 }}>
-                        <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, width: '100%' }}>
+                      <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, width: '100%' }}>
                           <animated.div style={{ scale: namePulse0.scale }}>
-                          <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[0]?.name || `Item 1`}</ItemName>
-                        </animated.div>
-                        </animated.div>
+                        <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[0]?.name || `Item 1`}</ItemName>
+                      </animated.div>
+                      </animated.div>
                         {lockInReady && currentWinnerId === currentPair[0]?.id && (
                           <div style={{ textAlign: 'center', marginTop: 8 }}>
                             <button style={{ padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', width: 'auto', minWidth: 120 }} onClick={() => handleLockInYour1()} disabled={gameLoading}>Lock In Your #1</button>
                           </div>
                         )}
-                      </div>
-                      {/* Lock In as #1 button logic for left item */}
-                      <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
-                        {currentPair[0] && (
-                          (lastWinnerId === currentPair[0].id && winnerStreak >= 3) ||
-                          (top5Ids.includes(currentPair[0].id) && lastWinnerId === currentPair[0].id && winnerStreak >= 1)
-                        ) && (
-                          <button style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#2563eb',
-                            fontWeight: 700,
-                            fontSize: 15,
-                            cursor: 'pointer',
-                            padding: 0,
-                            minHeight: 24,
-                            minWidth: 0,
-                            lineHeight: 1.2,
-                            textDecoration: 'underline',
-                          }} onClick={() => handleLockInAs1(0)}>Lock In as #1</button>
-                        )}
-                      </div>
-                    </animated.div>
-                    <div style={{ position: 'absolute', left: '50%', top: '44%', transform: 'translate(-50%, -50%)', minWidth: 120, maxWidth: 140, minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 3 }}>
-                      <OrText style={{ margin: 0, padding: 0, minWidth: 0, textAlign: 'center', wordBreak: 'break-word' }}>OR</OrText>
                     </div>
-                    <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake2.rotate.to(r => `rotate(${r}deg)`), marginLeft: 36 }}>
-                      <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1 }}>
-                        <animated.div style={{ scale: imgPulse1.scale }}>
+                    {/* Lock In as #1 button logic for left item */}
+                    <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
+                      {currentPair[0] && (
+                        (lastWinnerId === currentPair[0].id && winnerStreak >= 3) ||
+                        (top5Ids.includes(currentPair[0].id) && lastWinnerId === currentPair[0].id && winnerStreak >= 1)
+                      ) && (
+                        <button style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#2563eb',
+                          fontWeight: 700,
+                          fontSize: 15,
+                          cursor: 'pointer',
+                          padding: 0,
+                          minHeight: 24,
+                          minWidth: 0,
+                          lineHeight: 1.2,
+                          textDecoration: 'underline',
+                        }} onClick={() => handleLockInAs1(0)}>Lock In as #1</button>
+                      )}
+                    </div>
+                  </animated.div>
+                  <div style={{ position: 'absolute', left: '50%', top: '44%', transform: 'translate(-50%, -50%)', minWidth: 120, maxWidth: 140, minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 3 }}>
+                    <OrText style={{ margin: 0, padding: 0, minWidth: 0, textAlign: 'center', wordBreak: 'break-word' }}>OR</OrText>
+                  </div>
+                  <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake2.rotate.to(r => `rotate(${r}deg)`), marginLeft: 36 }}>
+                    <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1 }}>
+                      <animated.div style={{ scale: imgPulse1.scale }}>
                           <ImagePlaceholder style={{ cursor: gameLoading || !currentPair[1] ? 'default' : 'pointer', opacity: currentPair[1] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 1 ? `2px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={() => !gameLoading && currentPair[1] && handleVote(1)}>
-                            {currentPair[1]?.imageUrl && (
+                          {currentPair[1]?.imageUrl && (
                               <img src={currentPair[1].imageUrl} alt={currentPair[1]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
-                            )}
-                            <animated.div style={{
-                              position: 'absolute',
+                          )}
+                          <animated.div style={{
+                            position: 'absolute',
                               top: 0, left: 0, width: 240, height: 260,
-                              borderRadius: 16,
-                              border: `4px solid ${NEON_GREEN}`,
-                              background: 'transparent',
-                              pointerEvents: 'none',
-                              zIndex: 10,
-                              opacity: borderSpring1.borderOpacity,
-                              boxSizing: 'border-box',
-                              transition: 'opacity 0.3s',
-                            }} />
-                          </ImagePlaceholder>
-                        </animated.div>
+                            borderRadius: 16,
+                            border: `4px solid ${NEON_GREEN}`,
+                            background: 'transparent',
+                            pointerEvents: 'none',
+                            zIndex: 10,
+                            opacity: borderSpring1.borderOpacity,
+                            boxSizing: 'border-box',
+                            transition: 'opacity 0.3s',
+                          }} />
+                        </ImagePlaceholder>
                       </animated.div>
+                    </animated.div>
                       <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 10 }}>
-                        <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, width: '100%' }}>
+                      <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, width: '100%' }}>
                           <animated.div style={{ scale: namePulse1.scale }}>
-                            <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[1]?.name || `Item 2`}</ItemName>
-                          </animated.div>
-                        </animated.div>
+                        <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[1]?.name || `Item 2`}</ItemName>
+                      </animated.div>
+                      </animated.div>
                         {lockInReady && currentWinnerId === currentPair[1]?.id && (
                           <div style={{ textAlign: 'center', marginTop: 8 }}>
                             <button style={{ padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', width: 'auto', minWidth: 120 }} onClick={() => handleLockInYour1()} disabled={gameLoading}>Lock In Your #1</button>
                           </div>
                         )}
-                      </div>
-                      {/* Lock In as #1 button logic for right item */}
-                      <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
-                        {currentPair[1] && (
-                          (lastWinnerId === currentPair[1].id && winnerStreak >= 3) ||
-                          (top5Ids.includes(currentPair[1].id) && lastWinnerId === currentPair[1].id && winnerStreak >= 1)
-                        ) && (
-                          <button style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#2563eb',
-                            fontWeight: 700,
-                            fontSize: 15,
-                            cursor: 'pointer',
-                            padding: 0,
-                            minHeight: 24,
-                            minWidth: 0,
-                            lineHeight: 1.2,
-                            textDecoration: 'underline',
-                          }} onClick={() => handleLockInAs1(1)}>Lock In as #1</button>
-                        )}
-                      </div>
-                    </animated.div>
-                  </UpvoteImagesRow>
-                  {gameLoading && <div style={{ textAlign: 'center', color: '#888', marginTop: 16 }}>Loading...</div>}
-                </animated.div>
-              )}
+                    </div>
+                    {/* Lock In as #1 button logic for right item */}
+                    <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
+                      {currentPair[1] && (
+                        (lastWinnerId === currentPair[1].id && winnerStreak >= 3) ||
+                        (top5Ids.includes(currentPair[1].id) && lastWinnerId === currentPair[1].id && winnerStreak >= 1)
+                      ) && (
+                        <button style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#2563eb',
+                          fontWeight: 700,
+                          fontSize: 15,
+                          cursor: 'pointer',
+                          padding: 0,
+                          minHeight: 24,
+                          minWidth: 0,
+                          lineHeight: 1.2,
+                          textDecoration: 'underline',
+                        }} onClick={() => handleLockInAs1(1)}>Lock In as #1</button>
+                      )}
+                    </div>
+                  </animated.div>
+                </UpvoteImagesRow>
+                {gameLoading && <div style={{ textAlign: 'center', color: '#888', marginTop: 16 }}>Loading...</div>}
+              </animated.div>
+            )}
               {activeTab === 'Vote' && !selectedCategory && trendingMode && (
                 <animated.div style={imagesSpring}>
                   <UpvoteImagesRow style={{ alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative', width: '100%', height: 280, marginTop: 20 }}>
@@ -1733,28 +1772,28 @@ function App() {
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', fontSize: '1.5rem', color: '#888' }}>
                   Select Category
                 </div>
-              )}
-              {activeTab === 'Results' && selectedCategory && (
-                <animated.div style={{ opacity: resultsParentSpring.opacity }}>
-                  {rankPage > 0 && (
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 12 }}>
-                      <button
-                        style={{
-                          background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginBottom: 2, textDecoration: 'underline',
-                        }}
-                        onClick={() => setRankPage(0)}
-                      >Back to Top</button>
-                      <FiChevronUp
-                        style={{ fontSize: 32, color: '#2563eb', cursor: 'pointer', marginBottom: 2 }}
-                        onClick={() => setRankPage(p => Math.max(0, p - 1))}
-                      />
-                    </div>
-                  )}
-                  <RankList>
-                    {visibleRankItems.map((item, idx) => (
-                      <div key={item.id || item.name || idx} style={{ opacity: 1 }}>
-                        <RankItem>
-                          <RankNum>{rankPage * 10 + idx + 1}.</RankNum>
+            )}
+            {activeTab === 'Results' && selectedCategory && (
+              <animated.div style={{ opacity: resultsParentSpring.opacity }}>
+                {rankPage > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 12 }}>
+                    <button
+                      style={{
+                        background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginBottom: 2, textDecoration: 'underline',
+                      }}
+                      onClick={() => setRankPage(0)}
+                    >Back to Top</button>
+                    <FiChevronUp
+                      style={{ fontSize: 32, color: '#2563eb', cursor: 'pointer', marginBottom: 2 }}
+                      onClick={() => setRankPage(p => Math.max(0, p - 1))}
+                    />
+                  </div>
+                )}
+                <RankList>
+                  {visibleRankItems.map((item, idx) => (
+                    <div key={item.id || item.name || idx} style={{ opacity: 1 }}>
+                      <RankItem>
+                        <RankNum>{rankPage * 10 + idx + 1}.</RankNum>
                           <div style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -1783,28 +1822,28 @@ function App() {
                                 />
                               </div>
                             )}
-                            <RankName>{item.name}</RankName>
+                        <RankName>{item.name}</RankName>
                           </div>
                           <RankScore>{formatUpvotes(item.indexScore ?? 0)}</RankScore>
-                        </RankItem>
-                      </div>
-                    ))}
-                    {rankItems.length > (rankPage + 1) * 10 && (
-                      <DownArrow onClick={() => setRankPage(rankPage + 1)}>
-                        <FiChevronDown />
-                      </DownArrow>
-                    )}
-                  </RankList>
-                </animated.div>
-              )}
-              {activeTab === 'List' && selectedCategory && (
-                <></>
-              )}
-            </div>
-          </ContentBlock>
-        </CenteredBarWrapper>
+                      </RankItem>
+                    </div>
+                  ))}
+                  {rankItems.length > (rankPage + 1) * 10 && (
+                    <DownArrow onClick={() => setRankPage(rankPage + 1)}>
+                      <FiChevronDown />
+                    </DownArrow>
+                  )}
+                </RankList>
+              </animated.div>
+            )}
+            {activeTab === 'List' && selectedCategory && (
+              <></>
+            )}
+          </div>
+        </ContentBlock>
+      </CenteredBarWrapper>
         <BulkUploadForm />
-      </Container>
+    </Container>
     </ViewportWrapper>
   );
 }
