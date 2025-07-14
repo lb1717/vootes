@@ -461,10 +461,11 @@ const ViewportWrapper = styled.div`
   /* Mobile viewport scaling */
   ${props => props.isMobile && `
     transform: scale(${props.scale});
-    transform-origin: top center;
+    transform-origin: left top;
     width: 620px;
     max-width: 620px;
     min-height: 100vh;
+    margin: 0 auto;
   `}
 `;
 
@@ -556,29 +557,96 @@ function App() {
 
   // Calculate viewport scaling on mount and resize only
   useEffect(() => {
-    const calculateViewport = () => {
+    let expectedScroll = 0;
+    const baseContentWidth = 620;
+    const fudge = 1.012;
+    let zoomInterval;
+
+    const enforceLayout = () => {
       const windowWidth = window.innerWidth;
-      const windowHeight = window.innerHeight;
-      
-      // Base content width is 620px
-      const baseContentWidth = 620;
-      
       if (windowWidth <= 619) {
-        // Calculate scale to fit content width with 5px safe space on each side
-        const availableWidth = windowWidth - 10; // 5px safe space on each side
-        const scale = Math.min(availableWidth / baseContentWidth, 1);
+        const scale = (windowWidth / baseContentWidth) * fudge;
         setViewportScale(scale);
         setIsMobile(true);
+        expectedScroll = baseContentWidth * scale - windowWidth;
+        requestAnimationFrame(() => {
+          window.scrollTo({ left: expectedScroll, behavior: 'auto' });
+        });
       } else {
         setViewportScale(1);
         setIsMobile(false);
+        expectedScroll = 0;
+        requestAnimationFrame(() => {
+          window.scrollTo({ left: 0, behavior: 'auto' });
+        });
       }
     };
 
-    calculateViewport();
-    window.addEventListener('resize', calculateViewport);
-    return () => window.removeEventListener('resize', calculateViewport);
+    enforceLayout();
+    window.addEventListener('resize', enforceLayout);
+    window.addEventListener('orientationchange', enforceLayout);
+
+    // Prevent horizontal scroll drift
+    const lockScroll = () => {
+      if (window.scrollX !== expectedScroll) {
+        window.scrollTo({ left: expectedScroll, behavior: 'auto' });
+      }
+    };
+    window.addEventListener('scroll', lockScroll);
+
+    // Disable zooming (pinch/double-tap)
+    const preventZoom = (e) => {
+      if (e.touches && e.touches.length > 1) e.preventDefault();
+    };
+    const preventDoubleTap = (e) => {
+      if (e.touches && e.touches.length === 1) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('touchstart', preventZoom, { passive: false });
+    document.addEventListener('touchmove', preventZoom, { passive: false });
+    document.addEventListener('gesturestart', preventZoom, { passive: false });
+    document.addEventListener('gesturechange', preventZoom, { passive: false });
+    document.addEventListener('gestureend', preventZoom, { passive: false });
+    document.addEventListener('dblclick', preventDoubleTap, { passive: false });
+
+    // Poll for unwanted zoom/scale and reset if needed
+    zoomInterval = setInterval(() => {
+      if (window.visualViewport && window.visualViewport.scale !== 1) {
+        // Reset zoom by setting zoom CSS and re-enforcing layout
+        document.body.style.zoom = 1;
+        document.documentElement.style.zoom = 1;
+        enforceLayout();
+      }
+    }, 200);
+
+    return () => {
+      window.removeEventListener('resize', enforceLayout);
+      window.removeEventListener('orientationchange', enforceLayout);
+      window.removeEventListener('scroll', lockScroll);
+      document.removeEventListener('touchstart', preventZoom);
+      document.removeEventListener('touchmove', preventZoom);
+      document.removeEventListener('gesturestart', preventZoom);
+      document.removeEventListener('gesturechange', preventZoom);
+      document.removeEventListener('gestureend', preventZoom);
+      document.removeEventListener('dblclick', preventDoubleTap);
+      if (zoomInterval) clearInterval(zoomInterval);
+    };
   }, []);
+
+  // Also enforce after every render (in case of React layout changes)
+  useEffect(() => {
+    const baseContentWidth = 620;
+    const fudge = 1.012;
+    const windowWidth = window.innerWidth;
+    if (windowWidth <= 619) {
+      const scale = (windowWidth / baseContentWidth) * fudge;
+      const expectedScroll = baseContentWidth * scale - windowWidth;
+      window.scrollTo({ left: expectedScroll, behavior: 'auto' });
+    } else {
+      window.scrollTo({ left: 0, behavior: 'auto' });
+    }
+  });
 
   // Trending Questions state
   const [trendingMode, setTrendingMode] = useState(false);
