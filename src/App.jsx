@@ -1375,6 +1375,25 @@ function App() {
   // Analytics hook
   const { trackVote, trackCategorySelect, trackTrendingVote, trackLockIn } = useAnalytics();
 
+  useEffect(() => {
+    const scrollToHalfRight = () => {
+      const maxScroll = document.documentElement.scrollWidth - window.innerWidth;
+      window.scrollTo({ left: maxScroll / 2, behavior: 'auto' });
+    };
+    // Scroll on load
+    scrollToHalfRight();
+    // Also scroll when page becomes visible
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        scrollToHalfRight();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, []);
+
   return (
     <ViewportWrapper isMobile={isMobile} scale={viewportScale}>
     <Container>
