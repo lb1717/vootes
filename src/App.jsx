@@ -103,7 +103,7 @@ const TotalVootesDisplay = styled.div`
   color:rgb(198, 20, 204);
   font-size: 1.2rem;
   font-weight: 600;
-  margin-top: 18px;
+  margin-top: 9px;
   margin-bottom: -24px;
   font-family: inherit;
 `;
@@ -994,185 +994,128 @@ function App() {
     
     setDisappearingIdx(loserIdx);
     (loserIdx === 0 ? disappearApi0 : disappearApi1).start({ opacity: 0, config: { duration: 220 } });
-    // Pulse the image of the winning item
-    if (winnerIdx === 0) {
-      imgPulseApi0.start({
-        from: { scale: 1 },
-        to: async (next) => {
-          await next({ scale: 1.1 });
-          await next({ scale: 1 });
-        },
-        config: { tension: 500, friction: 8 },
-      });
-      namePulseApi0.start({
-        from: { scale: 1 },
-        to: async (next) => {
-          await next({ scale: 1.18 });
-          await next({ scale: 1 });
-        },
-        config: { tension: 400, friction: 8 },
-      });
-      borderApi0.start({ borderOpacity: 1, config: { duration: 0 } });
-      // Keep border visible during delay, then fade out
-      setTimeout(() => borderApi0.start({ borderOpacity: 0, config: { duration: 400 } }), 2000);
-    } else {
-      imgPulseApi1.start({
-        from: { scale: 1 },
-        to: async (next) => {
-          await next({ scale: 1.1 });
-          await next({ scale: 1 });
-        },
-        config: { tension: 500, friction: 8 },
-      });
-      namePulseApi1.start({
-        from: { scale: 1 },
-        to: async (next) => {
-          await next({ scale: 1.18 });
-          await next({ scale: 1 });
-        },
-        config: { tension: 400, friction: 8 },
-      });
-      borderApi1.start({ borderOpacity: 1, config: { duration: 0 } });
-      // Keep border visible during delay, then fade out
-      setTimeout(() => borderApi1.start({ borderOpacity: 0, config: { duration: 400 } }), 2000);
-    }
-    // After fade out, do calculations and show next matchup optimistically
+
     setTimeout(() => {
-      // Handle trending questions progression
       if (trendingMode) {
-        // Reset fade and disappearing state for trending mode
         (loserIdx === 0 ? disappearApi0 : disappearApi1).set({ opacity: 1 });
         setDisappearingIdx(null);
-        
-        // Update ELO scores for trending items
         const winner = trendingItems[winnerIdx];
         const loser = trendingItems[loserIdx];
         const { winner: updatedWinner, loser: updatedLoser } = updateElo(winner, loser);
-        
-        // Update Firestore for trending category
         updateDoc(doc(db, 'categories', trendingCategory.id, 'items', updatedWinner.id), { indexScore: updatedWinner.indexScore });
         updateDoc(doc(db, 'categories', trendingCategory.id, 'items', updatedLoser.id), { indexScore: updatedLoser.indexScore });
-        
-        // Increment upvotes for the trending category
         updateDoc(doc(db, 'categories', trendingCategory.id), { upvotes: increment(1) });
-        
-        // Update total Vootes directly without animation
         setTotalVootes(prev => prev + 1);
         setAnimatedVootes(prev => prev + 1);
         setTimeout(() => fetchTotalVootes(), 100);
-        
         if (trendingRound >= 5) {
-          // End trending mode
           setTrendingMode(false);
           setTrendingRound(0);
           setTrendingCategory(null);
           setTrendingItems([null, null]);
-          setTrendingCompleted(true); // Mark as completed
-          setVotedItemIdx(null); // Reset border styling
+          setTrendingCompleted(true);
+          setVotedItemIdx(null);
           return;
         } else {
-          // Wait for pulse animation to complete before moving to next round
           setTimeout(() => {
-            // Move to next round
             const nextRound = trendingRound + 1;
             setTrendingRound(nextRound);
-            setVotedItemIdx(null); // Reset border styling for new items
+            setVotedItemIdx(null);
             getRandomTrendingCategory().then(result => {
               if (result) {
                 setTrendingCategory(result.category);
                 setTrendingItems(result.items);
               }
             });
-          }, 200); // Wait 200ms for pulse animation to complete
+          }, 200);
           return;
         }
       }
-
-      // Optimistically update local gameItems and currentPair
-      const winner = currentPair[winnerIdx];
-      const loser = currentPair[loserIdx];
-      const { winner: updatedWinner, loser: updatedLoser } = updateElo(winner, loser);
-      // Update local gameItems
-      let updatedGameItems = gameItems.map(it => {
-        if (it.id === updatedWinner.id) return { ...it, indexScore: updatedWinner.indexScore };
-        if (it.id === updatedLoser.id) return { ...it, indexScore: updatedLoser.indexScore };
-        return it;
-      });
-      // Winner stays, pick new challenger from progressively better items
-      const winnerItem = updatedGameItems.find(it => it.id === updatedWinner.id);
-      const sorted = [...updatedGameItems].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
-      
-      // Progress to next ELO range (show better items)
-      const nextRange = Math.min(currentEloRange + 1, Math.floor(sorted.length / 2));
-      setCurrentEloRange(nextRange);
-      
-      // Pick challenger from current ELO range, avoiding used matchups
-      const currentRangeStart = nextRange * 2;
-      const currentRangeEnd = Math.min(currentRangeStart + 4, sorted.length);
-      let availableChallengers = sorted.slice(currentRangeStart, currentRangeEnd).filter(it => it.id !== winnerItem.id);
-      
-      // Filter out challengers that would create already-used matchups
-      availableChallengers = availableChallengers.filter(challenger => {
-        const matchup1 = `${winnerItem.id}-${challenger.id}`;
-        const matchup2 = `${challenger.id}-${winnerItem.id}`;
-        return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
-      });
-      
-      let newChallenger = null;
-      if (availableChallengers.length > 0) {
-        newChallenger = availableChallengers[Math.floor(Math.random() * availableChallengers.length)];
+      // REGULAR MODE
+      let usedFallback = false;
+      let nextPair = winnerIdx === 0 ? nextPairIfLeftWins : nextPairIfRightWins;
+      let imagesReady = winnerIdx === 0 ? nextPairImagesLoaded.left : nextPairImagesLoaded.right;
+      if (nextPair && imagesReady) {
+        setCurrentPair(nextPair);
+        setFadeInIdx(loserIdx);
+        setTimeout(() => setFadeInIdx(null), 300);
+        setVotedItemIdx(null);
+        setDisappearingIdx(null);
       } else {
-        // If no unused challengers in current range, try next range
-        const nextRangeStart = currentRangeEnd;
-        const nextRangeEnd = Math.min(nextRangeStart + 4, sorted.length);
-        let nextChallengers = sorted.slice(nextRangeStart, nextRangeEnd).filter(it => it.id !== winnerItem.id);
-        
-        // Filter out used matchups from next range too
-        nextChallengers = nextChallengers.filter(challenger => {
+        // fallback: recompute as before if not ready
+        usedFallback = true;
+        const winner = currentPair[winnerIdx];
+        const loser = currentPair[1 - winnerIdx];
+        const { winner: updatedWinner, loser: updatedLoser } = updateElo(winner, loser);
+        let updatedGameItems = gameItems.map(it => {
+          if (it.id === updatedWinner.id) return { ...it, indexScore: updatedWinner.indexScore };
+          if (it.id === updatedLoser.id) return { ...it, indexScore: updatedLoser.indexScore };
+          return it;
+        });
+        const winnerItem = updatedGameItems.find(it => it.id === updatedWinner.id);
+        const sorted = [...updatedGameItems].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
+        const nextRange = Math.min(currentEloRange + 1, Math.floor(sorted.length / 2));
+        setCurrentEloRange(nextRange);
+        const currentRangeStart = nextRange * 2;
+        const currentRangeEnd = Math.min(currentRangeStart + 4, sorted.length);
+        let availableChallengers = sorted.slice(currentRangeStart, currentRangeEnd).filter(it => it.id !== winnerItem.id);
+        availableChallengers = availableChallengers.filter(challenger => {
           const matchup1 = `${winnerItem.id}-${challenger.id}`;
           const matchup2 = `${challenger.id}-${winnerItem.id}`;
           return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
         });
-        
-        if (nextChallengers.length > 0) {
-          newChallenger = nextChallengers[Math.floor(Math.random() * nextChallengers.length)];
+        let newChallenger = null;
+        if (availableChallengers.length > 0) {
+          newChallenger = availableChallengers[Math.floor(Math.random() * availableChallengers.length)];
+        } else {
+          const nextRangeStart = currentRangeEnd;
+          const nextRangeEnd = Math.min(nextRangeStart + 4, sorted.length);
+          let nextChallengers = sorted.slice(nextRangeStart, nextRangeEnd).filter(it => it.id !== winnerItem.id);
+          nextChallengers = nextChallengers.filter(challenger => {
+            const matchup1 = `${winnerItem.id}-${challenger.id}`;
+            const matchup2 = `${challenger.id}-${winnerItem.id}`;
+            return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
+          });
+          if (nextChallengers.length > 0) {
+            newChallenger = nextChallengers[Math.floor(Math.random() * nextChallengers.length)];
+          }
         }
+        if (!newChallenger) {
+          const allOtherItems = updatedGameItems.filter(it => it.id !== winnerItem.id);
+          newChallenger = allOtherItems[Math.floor(Math.random() * allOtherItems.length)];
+        }
+        const newMatchup = `${winnerItem.id}-${newChallenger.id}`;
+        setUsedMatchups(prev => new Set([...prev, newMatchup]));
+        const newPair = [...currentPair];
+        newPair[winnerIdx] = winnerItem;
+        newPair[1 - winnerIdx] = newChallenger;
+        setCurrentPair(newPair);
+        setGameItems(updatedGameItems);
+        setFadeInIdx(loserIdx);
+        setTimeout(() => setFadeInIdx(null), 300);
+        setVotedItemIdx(null);
+        setDisappearingIdx(null);
       }
-      
-      // If still no unused challenger, try any item not the winner
-      if (!newChallenger) {
-        const allOtherItems = updatedGameItems.filter(it => it.id !== winnerItem.id);
-        newChallenger = allOtherItems[Math.floor(Math.random() * allOtherItems.length)];
-      }
-      
-      // Mark this matchup as used
-      const newMatchup = `${winnerItem.id}-${newChallenger.id}`;
-      setUsedMatchups(prev => new Set([...prev, newMatchup]));
-      
-      const newPair = [...currentPair];
-      newPair[winnerIdx] = winnerItem;
-      newPair[loserIdx] = newChallenger;
-      setCurrentPair(newPair);
-      setGameItems(updatedGameItems);
-      setFadeInIdx(loserIdx); // fade in the new challenger
-      // Reset fade and disappearing state
-      (loserIdx === 0 ? disappearApi0 : disappearApi1).set({ opacity: 1 });
-      setDisappearingIdx(null);
-      setVotedItemIdx(null); // Reset border styling for new items
-      setTimeout(() => setFadeInIdx(null), 300);
-      // Firestore writes in background
-      updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedWinner.id), { indexScore: updatedWinner.indexScore });
-      updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedLoser.id), { indexScore: updatedLoser.indexScore });
-      // Increment upvotes for the category in Firestore and locally
+      // Always update gameItems and Firestore regardless of which path
+      const winner2 = currentPair[winnerIdx];
+      const loser2 = currentPair[1 - winnerIdx];
+      const { winner: updatedWinner2, loser: updatedLoser2 } = updateElo(winner2, loser2);
+      let updatedGameItems2 = gameItems.map(it => {
+        if (it.id === updatedWinner2.id) return { ...it, indexScore: updatedWinner2.indexScore };
+        if (it.id === updatedLoser2.id) return { ...it, indexScore: updatedLoser2.indexScore };
+        return it;
+      });
+      setGameItems(updatedGameItems2);
+      updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedWinner2.id), { indexScore: updatedWinner2.indexScore });
+      updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedLoser2.id), { indexScore: updatedLoser2.indexScore });
       if (selectedCategory) {
         setCategoryUpvotes(u => (u || 0) + 1);
         updateDoc(doc(db, 'categories', selectedCategory.id), { upvotes: increment(1) });
-        // Update total Vootes directly without animation
         setTotalVootes(prev => prev + 1);
         setAnimatedVootes(prev => prev + 1);
         setTimeout(() => fetchTotalVootes(), 100);
       }
-    }, 240); // match fade out duration
+    }, 240);
   }
 
   // Handle Lock In as #1 button click
@@ -1394,6 +1337,91 @@ function App() {
     };
   }, []);
 
+  // Add with other useState
+  const [nextPairIfLeftWins, setNextPairIfLeftWins] = useState(null);
+  const [nextPairIfRightWins, setNextPairIfRightWins] = useState(null);
+  const [nextPairImagesLoaded, setNextPairImagesLoaded] = useState({ left: false, right: false });
+
+  // Utility to preload an image and return a promise
+  function preloadImage(url) {
+    return new Promise((resolve) => {
+      if (!url) return resolve();
+      const img = new window.Image();
+      img.onload = () => resolve();
+      img.onerror = () => resolve();
+      img.src = url;
+    });
+  }
+
+  // Precompute and preload both possible next pairs
+  useEffect(() => {
+    if (!currentPair[0] || !currentPair[1] || !gameItems.length) return;
+    // Compute next pairs for both outcomes
+    const computeNextPair = (winnerIdx) => {
+      const winner = currentPair[winnerIdx];
+      const loser = currentPair[1 - winnerIdx];
+      const { winner: updatedWinner, loser: updatedLoser } = updateElo(winner, loser);
+      let updatedGameItems = gameItems.map(it => {
+        if (it.id === updatedWinner.id) return { ...it, indexScore: updatedWinner.indexScore };
+        if (it.id === updatedLoser.id) return { ...it, indexScore: updatedLoser.indexScore };
+        return it;
+      });
+      const winnerItem = updatedGameItems.find(it => it.id === updatedWinner.id);
+      const sorted = [...updatedGameItems].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
+      const nextRange = Math.min(currentEloRange + 1, Math.floor(sorted.length / 2));
+      const currentRangeStart = nextRange * 2;
+      const currentRangeEnd = Math.min(currentRangeStart + 4, sorted.length);
+      let availableChallengers = sorted.slice(currentRangeStart, currentRangeEnd).filter(it => it.id !== winnerItem.id);
+      availableChallengers = availableChallengers.filter(challenger => {
+        const matchup1 = `${winnerItem.id}-${challenger.id}`;
+        const matchup2 = `${challenger.id}-${winnerItem.id}`;
+        return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
+      });
+      let newChallenger = null;
+      if (availableChallengers.length > 0) {
+        newChallenger = availableChallengers[Math.floor(Math.random() * availableChallengers.length)];
+      } else {
+        const nextRangeStart = currentRangeEnd;
+        const nextRangeEnd = Math.min(nextRangeStart + 4, sorted.length);
+        let nextChallengers = sorted.slice(nextRangeStart, nextRangeEnd).filter(it => it.id !== winnerItem.id);
+        nextChallengers = nextChallengers.filter(challenger => {
+          const matchup1 = `${winnerItem.id}-${challenger.id}`;
+          const matchup2 = `${challenger.id}-${winnerItem.id}`;
+          return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
+        });
+        if (nextChallengers.length > 0) {
+          newChallenger = nextChallengers[Math.floor(Math.random() * nextChallengers.length)];
+        }
+      }
+      if (!newChallenger) {
+        const allOtherItems = updatedGameItems.filter(it => it.id !== winnerItem.id);
+        newChallenger = allOtherItems[Math.floor(Math.random() * allOtherItems.length)];
+      }
+      const newPair = [...currentPair];
+      newPair[winnerIdx] = winnerItem;
+      newPair[1 - winnerIdx] = newChallenger;
+      return newPair;
+    };
+    const leftPair = computeNextPair(0);
+    const rightPair = computeNextPair(1);
+    setNextPairIfLeftWins(leftPair);
+    setNextPairIfRightWins(rightPair);
+    // Preload images for both pairs
+    setNextPairImagesLoaded({ left: false, right: false });
+    if (leftPair && leftPair[0] && leftPair[1]) {
+      Promise.all([
+        preloadImage(leftPair[0].imageUrl),
+        preloadImage(leftPair[1].imageUrl)
+      ]).then(() => setNextPairImagesLoaded(prev => ({ ...prev, left: true })));
+    }
+    if (rightPair && rightPair[0] && rightPair[1]) {
+      Promise.all([
+        preloadImage(rightPair[0].imageUrl),
+        preloadImage(rightPair[1].imageUrl)
+      ]).then(() => setNextPairImagesLoaded(prev => ({ ...prev, right: true })));
+    }
+  }, [currentPair, gameItems, currentEloRange, usedMatchups]);
+
   return (
     <ViewportWrapper isMobile={isMobile} scale={viewportScale}>
     <Container>
@@ -1548,7 +1576,8 @@ function App() {
           )}
         </DropdownPanel>
           <TotalVootesDisplay>
-            <span style={{ fontWeight: '900' }}>{formatUpvotes(animatedVootes)}</span> Vootes
+            All-Time Vootes<br />
+            <span style={{ fontWeight: '900', fontSize: '1.3em', display: 'block', marginTop: -2 }}>{formatUpvotes(animatedVootes)}</span>
           </TotalVootesDisplay>
         <ContentBlock ref={contentBlockRef} style={{ flexDirection: 'column', alignItems: 'stretch', padding: 0, position: 'relative', overflow: 'visible' }}>
           {/* Info block is now in normal flow, so tabs and images are always below */}
