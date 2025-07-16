@@ -529,6 +529,23 @@ function AnimatedUpVoteTitle({ logoRef }) {
   );
 }
 
+// Add this helper function near the top, after constants
+function getNextChallenger(winner, allItems) {
+  const minScore = (winner.indexScore || 0) * 0.95;
+  const candidates = allItems.filter(
+    it => it.id !== winner.id && (it.indexScore || 0) >= minScore
+  );
+  if (candidates.length > 0) {
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+  // fallback: any other item except winner
+  const others = allItems.filter(it => it.id !== winner.id);
+  if (others.length > 0) {
+    return others[Math.floor(Math.random() * others.length)];
+  }
+  return null;
+}
+
 function App() {
   const categories = [
     'Sports',
@@ -963,7 +980,7 @@ function App() {
     if (!trendingMode) {
       if (currentWinnerId === winner.id) {
         setConsecutiveWins(prev => prev + 1);
-        if (consecutiveWins + 1 >= 3) {
+        if (consecutiveWins + 1 >= 5) {
           setLockInReady(true);
         }
       } else {
@@ -1000,89 +1017,100 @@ function App() {
           return;
         }
       }
-      // REGULAR MODE
-      let usedFallback = false;
-      let nextPair = winnerIdx === 0 ? nextPairIfLeftWins : nextPairIfRightWins;
-      let imagesReady = winnerIdx === 0 ? nextPairImagesLoaded.left : nextPairImagesLoaded.right;
-      if (nextPair && imagesReady) {
-        setCurrentPair(nextPair);
-        setFadeInIdx(loserIdx);
-        setTimeout(() => setFadeInIdx(null), 300);
-        setVotedItemIdx(null);
-        setDisappearingIdx(null);
-      } else {
-        // fallback: recompute as before if not ready
-        usedFallback = true;
-        const winner = currentPair[winnerIdx];
-        const loser = currentPair[1 - winnerIdx];
-        const { winner: updatedWinner, loser: updatedLoser } = updateElo(winner, loser);
-        let updatedGameItems = gameItems.map(it => {
-          if (it.id === updatedWinner.id) return { ...it, indexScore: updatedWinner.indexScore };
-          if (it.id === updatedLoser.id) return { ...it, indexScore: updatedLoser.indexScore };
+      // LADDER MODE (default)
+      if (ladderMode) {
+        let usedFallback = false;
+        let nextPair = winnerIdx === 0 ? nextPairIfLeftWins : nextPairIfRightWins;
+        let imagesReady = winnerIdx === 0 ? nextPairImagesLoaded.left : nextPairImagesLoaded.right;
+        if (nextPair && imagesReady) {
+          setCurrentPair(nextPair);
+          setFadeInIdx(loserIdx);
+          setTimeout(() => setFadeInIdx(null), 300);
+          setVotedItemIdx(null);
+          setDisappearingIdx(null);
+        } else {
+          // fallback: recompute as before if not ready
+          usedFallback = true;
+          const winner = currentPair[winnerIdx];
+          const loser = currentPair[1 - winnerIdx];
+          const { winner: updatedWinner, loser: updatedLoser } = updateElo(winner, loser);
+          let updatedGameItems = gameItems.map(it => {
+            if (it.id === updatedWinner.id) return { ...it, indexScore: updatedWinner.indexScore };
+            if (it.id === updatedLoser.id) return { ...it, indexScore: updatedLoser.indexScore };
+            return it;
+          });
+          const winnerItem = updatedGameItems.find(it => it.id === updatedWinner.id);
+          const challenger = getNextChallenger(winnerItem, updatedGameItems);
+          if (challenger) {
+            if (winnerIdx === 0) {
+              setCurrentPair([winnerItem, challenger]);
+            } else {
+              setCurrentPair([challenger, winnerItem]);
+            }
+          } else {
+            if (winnerIdx === 0) {
+              setCurrentPair([winnerItem, null]);
+            } else {
+              setCurrentPair([null, winnerItem]);
+            }
+          }
+          setUsedMatchups(prev => new Set([...prev, `${winnerItem.id}-${challenger.id}`]));
+          setFadeInIdx(loserIdx);
+          setTimeout(() => setFadeInIdx(null), 300);
+          setVotedItemIdx(null);
+          setDisappearingIdx(null);
+        }
+        // Always update gameItems and Firestore regardless of which path
+        const winner2 = currentPair[winnerIdx];
+        const loser2 = currentPair[1 - winnerIdx];
+        const { winner: updatedWinner2, loser: updatedLoser2 } = updateElo(winner2, loser2);
+        let updatedGameItems2 = gameItems.map(it => {
+          if (it.id === updatedWinner2.id) return { ...it, indexScore: updatedWinner2.indexScore };
+          if (it.id === updatedLoser2.id) return { ...it, indexScore: updatedLoser2.indexScore };
           return it;
         });
-        const winnerItem = updatedGameItems.find(it => it.id === updatedWinner.id);
-        const sorted = [...updatedGameItems].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
-        const nextRange = Math.min(currentEloRange + 1, Math.floor(sorted.length / 2));
-        setCurrentEloRange(nextRange);
-        const currentRangeStart = nextRange * 2;
-        const currentRangeEnd = Math.min(currentRangeStart + 4, sorted.length);
-        let availableChallengers = sorted.slice(currentRangeStart, currentRangeEnd).filter(it => it.id !== winnerItem.id);
-        availableChallengers = availableChallengers.filter(challenger => {
-          const matchup1 = `${winnerItem.id}-${challenger.id}`;
-          const matchup2 = `${challenger.id}-${winnerItem.id}`;
-          return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
+        setGameItems(updatedGameItems2);
+        updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedWinner2.id), { indexScore: updatedWinner2.indexScore });
+        updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedLoser2.id), { indexScore: updatedLoser2.indexScore });
+        if (selectedCategory) {
+          setCategoryUpvotes(u => (u || 0) + 1);
+          updateDoc(doc(db, 'categories', selectedCategory.id), { upvotes: increment(1) });
+          setTotalVootes(prev => prev + 1);
+          setAnimatedVootes(prev => prev + 1);
+          setTimeout(() => fetchTotalVootes(), 100);
+        }
+      } else {
+        // RANDOM MODE: pick two completely random, different items from gameItems
+        if (gameItems.length >= 2) {
+          let idxA = Math.floor(Math.random() * gameItems.length);
+          let idxB;
+          do {
+            idxB = Math.floor(Math.random() * gameItems.length);
+          } while (idxB === idxA && gameItems.length > 1);
+          setCurrentPair([gameItems[idxA], gameItems[idxB]]);
+        }
+        // Still update ELO and upvotes for the picked pair
+        const winner2 = currentPair[winnerIdx];
+        const loser2 = currentPair[1 - winnerIdx];
+        const { winner: updatedWinner2, loser: updatedLoser2 } = updateElo(winner2, loser2);
+        let updatedGameItems2 = gameItems.map(it => {
+          if (it.id === updatedWinner2.id) return { ...it, indexScore: updatedWinner2.indexScore };
+          if (it.id === updatedLoser2.id) return { ...it, indexScore: updatedLoser2.indexScore };
+          return it;
         });
-        let newChallenger = null;
-        if (availableChallengers.length > 0) {
-          newChallenger = availableChallengers[Math.floor(Math.random() * availableChallengers.length)];
-        } else {
-          const nextRangeStart = currentRangeEnd;
-          const nextRangeEnd = Math.min(nextRangeStart + 4, sorted.length);
-          let nextChallengers = sorted.slice(nextRangeStart, nextRangeEnd).filter(it => it.id !== winnerItem.id);
-          nextChallengers = nextChallengers.filter(challenger => {
-            const matchup1 = `${winnerItem.id}-${challenger.id}`;
-            const matchup2 = `${challenger.id}-${winnerItem.id}`;
-            return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
-          });
-          if (nextChallengers.length > 0) {
-            newChallenger = nextChallengers[Math.floor(Math.random() * nextChallengers.length)];
-          }
+        setGameItems(updatedGameItems2);
+        updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedWinner2.id), { indexScore: updatedWinner2.indexScore });
+        updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedLoser2.id), { indexScore: updatedLoser2.indexScore });
+        if (selectedCategory) {
+          setCategoryUpvotes(u => (u || 0) + 1);
+          updateDoc(doc(db, 'categories', selectedCategory.id), { upvotes: increment(1) });
+          setTotalVootes(prev => prev + 1);
+          setAnimatedVootes(prev => prev + 1);
+          setTimeout(() => fetchTotalVootes(), 100);
         }
-        if (!newChallenger) {
-          const allOtherItems = updatedGameItems.filter(it => it.id !== winnerItem.id);
-          newChallenger = allOtherItems[Math.floor(Math.random() * allOtherItems.length)];
-        }
-        const newMatchup = `${winnerItem.id}-${newChallenger.id}`;
-        setUsedMatchups(prev => new Set([...prev, newMatchup]));
-        const newPair = [...currentPair];
-        newPair[winnerIdx] = winnerItem;
-        newPair[1 - winnerIdx] = newChallenger;
-        setCurrentPair(newPair);
-        setGameItems(updatedGameItems);
-        setFadeInIdx(loserIdx);
-        setTimeout(() => setFadeInIdx(null), 300);
+        setFadeInIdx(null);
         setVotedItemIdx(null);
         setDisappearingIdx(null);
-      }
-      // Always update gameItems and Firestore regardless of which path
-      const winner2 = currentPair[winnerIdx];
-      const loser2 = currentPair[1 - winnerIdx];
-      const { winner: updatedWinner2, loser: updatedLoser2 } = updateElo(winner2, loser2);
-      let updatedGameItems2 = gameItems.map(it => {
-        if (it.id === updatedWinner2.id) return { ...it, indexScore: updatedWinner2.indexScore };
-        if (it.id === updatedLoser2.id) return { ...it, indexScore: updatedLoser2.indexScore };
-        return it;
-      });
-      setGameItems(updatedGameItems2);
-      updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedWinner2.id), { indexScore: updatedWinner2.indexScore });
-      updateDoc(doc(db, 'categories', selectedCategory.id, 'items', updatedLoser2.id), { indexScore: updatedLoser2.indexScore });
-      if (selectedCategory) {
-        setCategoryUpvotes(u => (u || 0) + 1);
-        updateDoc(doc(db, 'categories', selectedCategory.id), { upvotes: increment(1) });
-        setTotalVootes(prev => prev + 1);
-        setAnimatedVootes(prev => prev + 1);
-        setTimeout(() => fetchTotalVootes(), 100);
       }
     }, 240);
   }
@@ -1336,40 +1364,20 @@ function App() {
         return it;
       });
       const winnerItem = updatedGameItems.find(it => it.id === updatedWinner.id);
-      const sorted = [...updatedGameItems].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
-      const nextRange = Math.min(currentEloRange + 1, Math.floor(sorted.length / 2));
-      const currentRangeStart = nextRange * 2;
-      const currentRangeEnd = Math.min(currentRangeStart + 4, sorted.length);
-      let availableChallengers = sorted.slice(currentRangeStart, currentRangeEnd).filter(it => it.id !== winnerItem.id);
-      availableChallengers = availableChallengers.filter(challenger => {
-        const matchup1 = `${winnerItem.id}-${challenger.id}`;
-        const matchup2 = `${challenger.id}-${winnerItem.id}`;
-        return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
-      });
-      let newChallenger = null;
-      if (availableChallengers.length > 0) {
-        newChallenger = availableChallengers[Math.floor(Math.random() * availableChallengers.length)];
+      const challenger = getNextChallenger(winnerItem, updatedGameItems);
+      if (challenger) {
+        if (winnerIdx === 0) {
+          return [winnerItem, challenger];
+        } else {
+          return [challenger, winnerItem];
+        }
       } else {
-        const nextRangeStart = currentRangeEnd;
-        const nextRangeEnd = Math.min(nextRangeStart + 4, sorted.length);
-        let nextChallengers = sorted.slice(nextRangeStart, nextRangeEnd).filter(it => it.id !== winnerItem.id);
-        nextChallengers = nextChallengers.filter(challenger => {
-          const matchup1 = `${winnerItem.id}-${challenger.id}`;
-          const matchup2 = `${challenger.id}-${winnerItem.id}`;
-          return !usedMatchups.has(matchup1) && !usedMatchups.has(matchup2);
-        });
-        if (nextChallengers.length > 0) {
-          newChallenger = nextChallengers[Math.floor(Math.random() * nextChallengers.length)];
+        if (winnerIdx === 0) {
+          return [winnerItem, null];
+        } else {
+          return [null, winnerItem];
         }
       }
-      if (!newChallenger) {
-        const allOtherItems = updatedGameItems.filter(it => it.id !== winnerItem.id);
-        newChallenger = allOtherItems[Math.floor(Math.random() * allOtherItems.length)];
-      }
-      const newPair = [...currentPair];
-      newPair[winnerIdx] = winnerItem;
-      newPair[1 - winnerIdx] = newChallenger;
-      return newPair;
     };
     const leftPair = computeNextPair(0);
     const rightPair = computeNextPair(1);
@@ -1432,6 +1440,9 @@ function App() {
       setTrendingMode(true);
     }
   }, [selectedCategory, trendingMode, trendingCompleted, allCategories]);
+
+  // Add with other useState
+  const [ladderMode, setLadderMode] = useState(false); // true = Ladder, false = Random
 
   return (
     <ViewportWrapper isMobile={isMobile} scale={viewportScale}>
@@ -1592,11 +1603,69 @@ function App() {
           {/* Info block is now in normal flow, so tabs and images are always below */}
           {selectedCategory && categoryInfo && (
             <div style={{ background: 'transparent', padding: '32px 32px 0 32px', marginBottom: 8 }}>
+              {/* First row: Title and Upvotes */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
                 <animated.div style={{ fontWeight: 700, fontSize: 22, ...titleSpring }}>{categoryInfo.name}</animated.div>
-                  <animated.div style={{ fontWeight: 500, fontSize: 18, color: '#2563eb', ...upvotesSpring }}>{categoryUpvotes !== null ? `${formatUpvotes(categoryUpvotes)} Vootes` : ''}</animated.div>
+                <animated.div style={{ fontWeight: 700, fontSize: 22, color: '#2563eb', ...upvotesSpring }}>{categoryUpvotes !== null ? `${formatUpvotes(categoryUpvotes)} Vootes` : ''}</animated.div>
               </div>
-              <animated.div style={{ fontSize: 15, color: '#444', margin: '8px 0 0 0', textAlign: 'left', ...descSpring }}>{categoryInfo.description}</animated.div>
+              {/* Second row: Description and Mode Button */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                <animated.div style={{ fontSize: 15, color: '#444', textAlign: 'left', flex: 1, ...descSpring }}>{categoryInfo.description}</animated.div>
+                {/* Toggle for Ladder/Random mode */}
+                <div style={{
+                  display: 'flex',
+                  borderRadius: 8,
+                  overflow: 'hidden',
+                  marginLeft: 24,
+                  alignSelf: 'flex-start',
+                  height: 28,
+                  outline: 'none',
+                  boxShadow: 'none',
+                }}>
+                  <button
+                    onClick={() => setLadderMode(true)}
+                    style={{
+                      background: ladderMode ? '#22223b' : '#e5e7eb',
+                      color: ladderMode ? '#fff' : '#22223b',
+                      border: 'none',
+                      outline: 'none',
+                      fontWeight: 500,
+                      fontSize: 13,
+                      padding: '0 14px',
+                      height: '100%',
+                      cursor: ladderMode ? 'default' : 'pointer',
+                      transition: 'background 0.2s, color 0.2s',
+                      boxShadow: 'none',
+                    }}
+                    disabled={ladderMode}
+                    tabIndex={0}
+                    onFocus={e => e.target.style.outline = 'none'}
+                  >
+                    Ladder
+                  </button>
+                  <button
+                    onClick={() => setLadderMode(false)}
+                    style={{
+                      background: !ladderMode ? '#22223b' : '#e5e7eb',
+                      color: !ladderMode ? '#fff' : '#22223b',
+                      border: 'none',
+                      outline: 'none',
+                      fontWeight: 500,
+                      fontSize: 13,
+                      padding: '0 14px',
+                      height: '100%',
+                      cursor: !ladderMode ? 'default' : 'pointer',
+                      transition: 'background 0.2s, color 0.2s',
+                      boxShadow: 'none',
+                    }}
+                    disabled={!ladderMode}
+                    tabIndex={0}
+                    onFocus={e => e.target.style.outline = 'none'}
+                  >
+                    Random
+                  </button>
+                </div>
+              </div>
             </div>
           )}
             {trendingMode && (
@@ -1672,10 +1741,10 @@ function App() {
                           </div>
                         )}
                     </div>
-                    {/* Lock In as #1 button logic for left item */}
+                    {/* Lock In as #1 button logic for left item (now requires 5 consecutive picks) */}
                     <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
                       {currentPair[0] && (
-                        (lastWinnerId === currentPair[0].id && winnerStreak >= 3) ||
+                        (lastWinnerId === currentPair[0].id && winnerStreak >= 5) ||
                         (top5Ids.includes(currentPair[0].id) && lastWinnerId === currentPair[0].id && winnerStreak >= 1)
                       ) && (
                         <button style={{
@@ -1731,10 +1800,10 @@ function App() {
                           </div>
                         )}
                     </div>
-                    {/* Lock In as #1 button logic for right item */}
+                    {/* Lock In as #1 button logic for right item (now requires 5 consecutive picks) */}
                     <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
                       {currentPair[1] && (
-                        (lastWinnerId === currentPair[1].id && winnerStreak >= 3) ||
+                        (lastWinnerId === currentPair[1].id && winnerStreak >= 5) ||
                         (top5Ids.includes(currentPair[1].id) && lastWinnerId === currentPair[1].id && winnerStreak >= 1)
                       ) && (
                         <button style={{
