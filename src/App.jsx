@@ -612,6 +612,9 @@ function App() {
   const [animatedVootes, setAnimatedVootes] = useState(0);
   const animationRunRef = useRef(false);
 
+  // Game mode state
+  const [ladderMode, setLadderMode] = useState(false); // true = Ladder, false = Random
+
   // SVG border animation values
   const borderLength = 2 * (BAR_WIDTH_NUM + BAR_HEIGHT_NUM - 2 * BORDER_RADIUS) + 2 * Math.PI * BORDER_RADIUS;
 
@@ -1080,14 +1083,21 @@ function App() {
           setTimeout(() => fetchTotalVootes(), 100);
         }
       } else {
-        // RANDOM MODE: pick two completely random, different items from gameItems
-        if (gameItems.length >= 2) {
-          let idxA = Math.floor(Math.random() * gameItems.length);
-          let idxB;
-          do {
-            idxB = Math.floor(Math.random() * gameItems.length);
-          } while (idxB === idxA && gameItems.length > 1);
-          setCurrentPair([gameItems[idxA], gameItems[idxB]]);
+        // RANDOM MODE: use preloaded random items if available
+        if (nextRandomItems.length >= 2) {
+          setCurrentPair([nextRandomItems[0], nextRandomItems[1]]);
+          // Clear the used items so new ones will be generated
+          setNextRandomItems([]);
+        } else {
+          // Fallback: pick two completely random, different items from gameItems
+          if (gameItems.length >= 2) {
+            let idxA = Math.floor(Math.random() * gameItems.length);
+            let idxB;
+            do {
+              idxB = Math.floor(Math.random() * gameItems.length);
+            } while (idxB === idxA && gameItems.length > 1);
+            setCurrentPair([gameItems[idxA], gameItems[idxB]]);
+          }
         }
         // Still update ELO and upvotes for the picked pair
         const winner2 = currentPair[winnerIdx];
@@ -1339,6 +1349,9 @@ function App() {
   const [nextPairIfRightWins, setNextPairIfRightWins] = useState(null);
   const [nextPairImagesLoaded, setNextPairImagesLoaded] = useState({ left: false, right: false });
 
+  // Simple preloading for random mode
+  const [nextRandomItems, setNextRandomItems] = useState([]);
+
   // Utility to preload an image and return a promise
   function preloadImage(url) {
     return new Promise((resolve) => {
@@ -1399,6 +1412,25 @@ function App() {
     }
   }, [currentPair, gameItems, currentEloRange, usedMatchups]);
 
+  // Simple preloading for random mode - generate next 2 random items
+  useEffect(() => {
+    if (!ladderMode && gameItems.length >= 2) {
+      // Generate next 2 random items
+      const items = [];
+      for (let i = 0; i < 2; i++) {
+        let idx = Math.floor(Math.random() * gameItems.length);
+        while (items.some(item => item.id === gameItems[idx].id)) {
+          idx = Math.floor(Math.random() * gameItems.length);
+        }
+        items.push(gameItems[idx]);
+      }
+      setNextRandomItems(items);
+      
+      // Preload their images
+      Promise.all(items.map(item => preloadImage(item.imageUrl)));
+    }
+  }, [currentPair, gameItems, ladderMode]);
+
   // Preload all trending questions and images when trending mode starts
   useEffect(() => {
     if (trendingMode && trendingQuestions.length === 0 && allCategories.length > 0) {
@@ -1440,9 +1472,6 @@ function App() {
       setTrendingMode(true);
     }
   }, [selectedCategory, trendingMode, trendingCompleted, allCategories]);
-
-  // Add with other useState
-  const [ladderMode, setLadderMode] = useState(false); // true = Ladder, false = Random
 
   return (
     <ViewportWrapper isMobile={isMobile} scale={viewportScale}>
