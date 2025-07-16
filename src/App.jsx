@@ -583,9 +583,8 @@ function App() {
 
   // Trending Questions state
   const [trendingMode, setTrendingMode] = useState(false);
-  const [trendingRound, setTrendingRound] = useState(0);
-  const [trendingCategory, setTrendingCategory] = useState(null);
-  const [trendingItems, setTrendingItems] = useState([null, null]);
+  const [trendingQuestions, setTrendingQuestions] = useState([]); // [{category, items: [a, b]}]
+  const [trendingIndex, setTrendingIndex] = useState(0);
   const [trendingCompleted, setTrendingCompleted] = useState(false);
 
   // Track which item was voted for (for border styling)
@@ -668,20 +667,16 @@ function App() {
   }, []);
 
   // Function to get random category and its top 2 items
-  const getRandomTrendingCategory = async () => {
+  const getRandomTrendingCategory = async (excludeIds = []) => {
     if (allCategories.length === 0) return null;
-    
-    // Get a random category
-    const randomCategory = allCategories[Math.floor(Math.random() * allCategories.length)];
-    
+    // Exclude categories already used
+    const available = allCategories.filter(cat => !excludeIds.includes(cat.id));
+    if (available.length === 0) return null;
+    const randomCategory = available[Math.floor(Math.random() * available.length)];
     try {
-      // Fetch items for this category
       const items = await fetchItemsForCategory(randomCategory.id);
       const sorted = [...items].sort((a, b) => (b.indexScore || 0) - (a.indexScore || 0));
-      
-      // Get top 2 items
       const topItems = sorted.slice(0, 2);
-      
       return {
         category: randomCategory,
         items: topItems
@@ -691,20 +686,6 @@ function App() {
       return null;
     }
   };
-
-  // Initialize trending mode when no category is selected
-  useEffect(() => {
-    if (!selectedCategory && !trendingMode && trendingRound === 0 && allCategories.length > 0 && !trendingCompleted) {
-      setTrendingMode(true);
-      setTrendingRound(1);
-      getRandomTrendingCategory().then(result => {
-        if (result) {
-          setTrendingCategory(result.category);
-          setTrendingItems(result.items);
-        }
-      });
-    }
-  }, [selectedCategory, trendingMode, trendingRound, allCategories, trendingCompleted]);
 
   // Filter categories in-memory as user types
   useEffect(() => {
@@ -961,7 +942,7 @@ function App() {
   // In handleVote, after fade out and before updating state, trigger the pulse for the winner image:
   function handleVote(winnerIdx) {
     // Check if we're in trending mode or regular mode
-    const items = trendingMode ? trendingItems : currentPair;
+    const items = trendingMode ? trendingQuestions[trendingIndex]?.items : currentPair;
     if (!items[0] || !items[1]) return;
     
     // Set which item was voted for (for border styling)
@@ -973,7 +954,7 @@ function App() {
     
     // Track analytics
     if (trendingMode) {
-      trackTrendingVote(trendingCategory?.name || 'Unknown', winner.name, loser.name, trendingRound);
+      trackTrendingVote(trendingQuestions[trendingIndex]?.category?.name || 'Unknown', winner.name, loser.name, trendingIndex);
     } else if (selectedCategory) {
       trackVote(selectedCategory.name, winner.name, winner.name, loser.name);
     }
@@ -999,35 +980,23 @@ function App() {
       if (trendingMode) {
         (loserIdx === 0 ? disappearApi0 : disappearApi1).set({ opacity: 1 });
         setDisappearingIdx(null);
-        const winner = trendingItems[winnerIdx];
-        const loser = trendingItems[loserIdx];
+        const winner = trendingQuestions[trendingIndex]?.items[winnerIdx];
+        const loser = trendingQuestions[trendingIndex]?.items[loserIdx];
         const { winner: updatedWinner, loser: updatedLoser } = updateElo(winner, loser);
-        updateDoc(doc(db, 'categories', trendingCategory.id, 'items', updatedWinner.id), { indexScore: updatedWinner.indexScore });
-        updateDoc(doc(db, 'categories', trendingCategory.id, 'items', updatedLoser.id), { indexScore: updatedLoser.indexScore });
-        updateDoc(doc(db, 'categories', trendingCategory.id), { upvotes: increment(1) });
+        updateDoc(doc(db, 'categories', trendingQuestions[trendingIndex]?.category?.id, 'items', updatedWinner.id), { indexScore: updatedWinner.indexScore });
+        updateDoc(doc(db, 'categories', trendingQuestions[trendingIndex]?.category?.id, 'items', updatedLoser.id), { indexScore: updatedLoser.indexScore });
+        updateDoc(doc(db, 'categories', trendingQuestions[trendingIndex]?.category?.id), { upvotes: increment(1) });
         setTotalVootes(prev => prev + 1);
         setAnimatedVootes(prev => prev + 1);
         setTimeout(() => fetchTotalVootes(), 100);
-        if (trendingRound >= 5) {
+        if (trendingIndex >= 4) {
           setTrendingMode(false);
-          setTrendingRound(0);
-          setTrendingCategory(null);
-          setTrendingItems([null, null]);
           setTrendingCompleted(true);
-          setVotedItemIdx(null);
+          setTrendingQuestions([]);
+          setTrendingIndex(0);
           return;
         } else {
-          setTimeout(() => {
-            const nextRound = trendingRound + 1;
-            setTrendingRound(nextRound);
-            setVotedItemIdx(null);
-            getRandomTrendingCategory().then(result => {
-              if (result) {
-                setTrendingCategory(result.category);
-                setTrendingItems(result.items);
-              }
-            });
-          }, 200);
+          setTrendingIndex(idx => idx + 1);
           return;
         }
       }
@@ -1422,6 +1391,48 @@ function App() {
     }
   }, [currentPair, gameItems, currentEloRange, usedMatchups]);
 
+  // Preload all trending questions and images when trending mode starts
+  useEffect(() => {
+    if (trendingMode && trendingQuestions.length === 0 && allCategories.length > 0) {
+      (async () => {
+        const questions = [];
+        const usedIds = [];
+        for (let i = 0; i < 5; i++) {
+          const q = await getRandomTrendingCategory(usedIds);
+          if (!q) break;
+          questions.push(q);
+          usedIds.push(q.category.id);
+        }
+        // Preload all images
+        await Promise.all(
+          questions.flatMap(q => q.items.map(item => preloadImage(item?.imageUrl)))
+        );
+        setTrendingQuestions(questions);
+        setTrendingIndex(0);
+      })();
+    }
+    if (!trendingMode) {
+      setTrendingQuestions([]);
+      setTrendingIndex(0);
+    }
+  }, [trendingMode, allCategories]);
+
+  // Reset green border animation when trendingIndex changes
+  useEffect(() => {
+    if (trendingMode) {
+      borderApi0.start({ borderOpacity: 0 });
+      borderApi1.start({ borderOpacity: 0 });
+      setVotedItemIdx(null);
+    }
+  }, [trendingIndex, trendingMode]);
+
+  // Restore trendingMode auto-start logic (but do not set trendingQuestions or trendingIndex here)
+  useEffect(() => {
+    if (!selectedCategory && !trendingMode && !trendingCompleted && allCategories.length > 0) {
+      setTrendingMode(true);
+    }
+  }, [selectedCategory, trendingMode, trendingCompleted, allCategories]);
+
   return (
     <ViewportWrapper isMobile={isMobile} scale={viewportScale}>
     <Container>
@@ -1485,9 +1496,8 @@ function App() {
                           trackCategorySelect(cat.name);
                             // Exit trending mode when category is selected
                             setTrendingMode(false);
-                            setTrendingRound(0);
-                            setTrendingCategory(null);
-                            setTrendingItems([null, null]);
+                            setTrendingIndex(0);
+                            setTrendingQuestions([]);
                             setTrendingCompleted(false); // Reset completion status
                           setTimeout(() => {
                             if (contentBlockRef.current && logoRef.current) {
@@ -1563,9 +1573,8 @@ function App() {
                         trackCategorySelect(cat.name);
                         // Exit trending mode when category is selected
                         setTrendingMode(false);
-                        setTrendingRound(0);
-                        setTrendingCategory(null);
-                        setTrendingItems([null, null]);
+                        setTrendingIndex(0);
+                        setTrendingQuestions([]);
                         setTrendingCompleted(false); // Reset completion status
                       }}
                     >
@@ -1594,9 +1603,9 @@ function App() {
               <div style={{ background: 'transparent', padding: '32px 32px 0 32px', marginBottom: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
                   <animated.div style={{ fontWeight: 700, fontSize: 22, ...titleSpring }}>Trending Questions 📈</animated.div>
-                  <animated.div style={{ fontWeight: 500, fontSize: 18, color: '#2563eb', ...upvotesSpring }}>{trendingRound}/5</animated.div>
+                  <animated.div style={{ fontWeight: 500, fontSize: 18, color: '#2563eb', ...upvotesSpring }}>{(trendingIndex + 1)}/5</animated.div>
                 </div>
-                <animated.div style={{ fontSize: 15, color: '#444', margin: '8px 0 0 0', textAlign: 'left', ...descSpring }}>{trendingCategory?.name}</animated.div>
+                <animated.div style={{ fontSize: 15, color: '#444', margin: '8px 0 0 0', textAlign: 'left', ...descSpring }}>{trendingQuestions[trendingIndex]?.category?.name}</animated.div>
             </div>
           )}
           <div style={{ zIndex: 1, width: '100%' }}>
@@ -1754,9 +1763,9 @@ function App() {
                     <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake1.rotate.to(r => `rotate(${r}deg)`), marginRight: 36 }}>
                       <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1 }}>
                         <animated.div style={{ scale: imgPulse0.scale }}>
-                          <ImagePlaceholder style={{ cursor: trendingItems[0] ? 'pointer' : 'default', opacity: trendingItems[0] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 0 ? `2px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={() => trendingItems[0] && handleVote(0)}>
-                            {trendingItems[0]?.imageUrl && (
-                              <img src={trendingItems[0].imageUrl} alt={trendingItems[0]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
+                          <ImagePlaceholder style={{ cursor: trendingQuestions[trendingIndex]?.items[0] ? 'pointer' : 'default', opacity: trendingQuestions[trendingIndex]?.items[0] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 0 ? `2px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={() => trendingQuestions[trendingIndex]?.items[0] && handleVote(0)}>
+                            {trendingQuestions[trendingIndex]?.items[0]?.imageUrl && (
+                              <img src={trendingQuestions[trendingIndex]?.items[0].imageUrl} alt={trendingQuestions[trendingIndex]?.items[0]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
                             )}
                             <animated.div style={{
                               position: 'absolute',
@@ -1776,7 +1785,7 @@ function App() {
                       <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
                         <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, width: '100%' }}>
                           <animated.div style={{ scale: namePulse0.scale }}>
-                            <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{trendingItems[0]?.name || `Item 1`}</ItemName>
+                            <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{trendingQuestions[trendingIndex]?.items[0]?.name || `Item 1`}</ItemName>
                           </animated.div>
                         </animated.div>
                       </div>
@@ -1787,9 +1796,9 @@ function App() {
                     <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake2.rotate.to(r => `rotate(${r}deg)`), marginLeft: 36 }}>
                       <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1 }}>
                         <animated.div style={{ scale: imgPulse1.scale }}>
-                          <ImagePlaceholder style={{ cursor: trendingItems[1] ? 'pointer' : 'default', opacity: trendingItems[1] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 1 ? `2px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={() => trendingItems[1] && handleVote(1)}>
-                            {trendingItems[1]?.imageUrl && (
-                              <img src={trendingItems[1].imageUrl} alt={trendingItems[1]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
+                          <ImagePlaceholder style={{ cursor: trendingQuestions[trendingIndex]?.items[1] ? 'pointer' : 'default', opacity: trendingQuestions[trendingIndex]?.items[1] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 1 ? `2px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={() => trendingQuestions[trendingIndex]?.items[1] && handleVote(1)}>
+                            {trendingQuestions[trendingIndex]?.items[1]?.imageUrl && (
+                              <img src={trendingQuestions[trendingIndex]?.items[1].imageUrl} alt={trendingQuestions[trendingIndex]?.items[1]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
                             )}
                             <animated.div style={{
                               position: 'absolute',
@@ -1809,7 +1818,7 @@ function App() {
                       <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
                         <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, width: '100%' }}>
                           <animated.div style={{ scale: namePulse1.scale }}>
-                            <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{trendingItems[1]?.name || `Item 2`}</ItemName>
+                            <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{trendingQuestions[trendingIndex]?.items[1]?.name || `Item 2`}</ItemName>
                           </animated.div>
                         </animated.div>
                       </div>
