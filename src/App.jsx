@@ -9,6 +9,9 @@ import { useSpring, animated, useSprings, config } from '@react-spring/web';
 import { doc, updateDoc, increment, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { useAnalytics } from './hooks/useAnalytics';
+import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
+import { visitedCountries } from './visitedCountries';
+import WorldMap from 'react-svg-worldmap';
 
 const BABY_BLUE = '#b3d8fd';
 const NEON_BABY_BLUE = '#4fd1ff';
@@ -1473,6 +1476,40 @@ function App() {
     }
   }, [selectedCategory, trendingMode, trendingCompleted, allCategories]);
 
+  const WORLD_MAP_URL = "https://raw.githubusercontent.com/deldersveld/topojson/master/world-countries.json";
+
+  const MapWrapper = styled.div`
+    width: ${BAR_WIDTH_NUM}px;
+    max-width: 100%;
+    margin: 32px auto 0 auto;
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 2px 16px rgba(34,34,59,0.04);
+    padding: 24px 32px 16px 32px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-sizing: border-box;
+  `;
+
+  const MapTitle = styled.div`
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+    font-weight: 800;
+    font-size: 2.1rem;
+    color: #2563eb;
+    margin-bottom: 4px;
+    text-align: center;
+  `;
+
+  const MapSubtitle = styled.div`
+    font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+    font-weight: 400;
+    font-size: 1.05rem;
+    color: #888;
+    margin-bottom: 18px;
+    text-align: center;
+  `;
+
   return (
     <ViewportWrapper isMobile={isMobile} scale={viewportScale}>
     <Container>
@@ -1998,7 +2035,28 @@ function App() {
           </div>
         </ContentBlock>
       </CenteredBarWrapper>
-        <BulkUploadForm />
+      {/* Vootes Worldwide Map */}
+      <MapWrapper>
+        <MapTitle>Vootes Worldwide</MapTitle>
+        <MapSubtitle>Every country's Vootes count.</MapSubtitle>
+        <WorldMap
+          color={DARKER_BLUE}
+          backgroundColor="#fff"
+          size="lg"
+          data={visitedCountries.map(code => ({ country: code.toLowerCase(), value: 1 }))}
+          style={{ width: '100%', height: '220px', minHeight: 220 }}
+          styleFunction={(countryContext) => {
+            const isVisited = visitedCountries.map(c => c.toLowerCase()).includes(countryContext.countryCode.toLowerCase());
+            return {
+              fill: isVisited ? DARKER_BLUE : '#e0e4ea', // blue for visited, light grey for others
+              stroke: '#A9A9A9',
+              strokeWidth: 2,
+            };
+          }}
+        />
+      </MapWrapper>
+      {/* End Vootes Worldwide Map */}
+      <BulkUploadForm />
     </Container>
     </ViewportWrapper>
   );
