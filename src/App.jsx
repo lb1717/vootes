@@ -9,7 +9,6 @@ import { useSpring, animated, useSprings, config } from '@react-spring/web';
 import { doc, updateDoc, increment, getDoc } from 'firebase/firestore';
 import { db } from './firebase';
 import { useAnalytics } from './hooks/useAnalytics';
-import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
 import { visitedCountries } from './visitedCountries';
 import WorldMap from 'react-svg-worldmap';
 
