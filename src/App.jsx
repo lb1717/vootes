@@ -383,8 +383,13 @@ const RankItem = styled.div`
 `;
 
 const RankNum = styled.span`
-  font-weight: 700;
-  color: #2563eb;
+  font-weight: ${props => props.rank <= 3 ? '900' : '700'};
+  color: ${props => {
+    if (props.rank === 1) return '#B8860B'; // Gold
+    if (props.rank === 2) return '#C0C0C0'; // Silver
+    if (props.rank === 3) return '#CD7F32'; // Bronze
+    return '#2563eb'; // Default blue
+  }};
   width: 2.2em;
   text-align: right;
   margin-right: 8px;
@@ -533,19 +538,22 @@ function AnimatedUpVoteTitle({ logoRef }) {
 }
 
 // Add this helper function near the top, after constants
-function getNextChallenger(winner, allItems) {
+function getNextChallenger(winner, allItems, usedItemIds = new Set()) {
   const minScore = (winner.indexScore || 0) * 0.95;
   const candidates = allItems.filter(
-    it => it.id !== winner.id && (it.indexScore || 0) >= minScore
+    it => it.id !== winner.id && 
+         (it.indexScore || 0) >= minScore && 
+         !usedItemIds.has(it.id)
   );
   if (candidates.length > 0) {
     return candidates[Math.floor(Math.random() * candidates.length)];
   }
-  // fallback: any other item except winner
-  const others = allItems.filter(it => it.id !== winner.id);
+  // fallback: any other item except winner and used items
+  const others = allItems.filter(it => it.id !== winner.id && !usedItemIds.has(it.id));
   if (others.length > 0) {
     return others[Math.floor(Math.random() * others.length)];
   }
+  // If all items have been used, return null to trigger a reset
   return null;
 }
 
@@ -617,6 +625,7 @@ function App() {
 
   // Game mode state
   const [ladderMode, setLadderMode] = useState(false); // true = Ladder, false = Random
+  const [randomModeVoteCount, setRandomModeVoteCount] = useState(0); // Track votes in random mode
 
   // SVG border animation values
   const borderLength = 2 * (BAR_WIDTH_NUM + BAR_HEIGHT_NUM - 2 * BORDER_RADIUS) + 2 * Math.PI * BORDER_RADIUS;
@@ -860,6 +869,7 @@ function App() {
   const [currentWinnerId, setCurrentWinnerId] = useState(null);
   const [currentEloRange, setCurrentEloRange] = useState(0); // Track current ELO range being shown
   const [usedMatchups, setUsedMatchups] = useState(new Set()); // Track used matchups to avoid repetition
+  const [usedItemIds, setUsedItemIds] = useState(new Set()); // Track used item IDs to prevent repetition in ladder mode
 
   // Animation for new challenger fade-in
   const [fadeInIdx, setFadeInIdx] = useState(null); // 0 or 1 for which side fades in
@@ -932,6 +942,7 @@ function App() {
           const initialPair = [lowerRange[idxs[0]], lowerRange[idxs[1]]];
           setCurrentPair(initialPair);
           setCurrentEloRange(0); // Start at the bottom
+          setUsedItemIds(new Set([initialPair[0].id, initialPair[1].id])); // Track initial items as used
           setUsedMatchups(new Set([`${initialPair[0].id}-${initialPair[1].id}`])); // Mark initial matchup as used
         } else {
           setCurrentPair([null, null]);
@@ -941,6 +952,7 @@ function App() {
         setGameLoading(false);
         setConsecutiveWins(0);
         setCurrentWinnerId(null);
+        setRandomModeVoteCount(0); // Reset vote count for new category
       });
     } else {
       setGameItems([]);
@@ -950,7 +962,9 @@ function App() {
       setConsecutiveWins(0);
       setCurrentWinnerId(null);
       setCurrentEloRange(0);
+      setUsedItemIds(new Set());
       setUsedMatchups(new Set());
+      setRandomModeVoteCount(0); // Reset vote count
     }
   }, [activeTab, selectedCategory]);
 
@@ -1002,6 +1016,20 @@ function App() {
         setCurrentWinnerId(winner.id);
         setLockInReady(false);
       }
+      
+      // Track votes in random mode
+      if (!ladderMode) {
+        setRandomModeVoteCount(prev => {
+          const newCount = prev + 1;
+          // Switch to Results tab after 12 votes
+          if (newCount >= 12) {
+            setTimeout(() => {
+              setActiveTab('Results');
+            }, 500); // Small delay to let the vote animation complete
+          }
+          return newCount;
+        });
+      }
     }
     
     setDisappearingIdx(loserIdx);
@@ -1036,14 +1064,17 @@ function App() {
         let usedFallback = false;
         let nextPair = winnerIdx === 0 ? nextPairIfLeftWins : nextPairIfRightWins;
         let imagesReady = winnerIdx === 0 ? nextPairImagesLoaded.left : nextPairImagesLoaded.right;
-        if (nextPair && imagesReady) {
+        if (nextPair && nextPair[0] && nextPair[1] && imagesReady) {
           setCurrentPair(nextPair);
+          // Track used items for the new pair
+          setUsedItemIds(prev => new Set([...prev, nextPair[0].id, nextPair[1].id]));
+          setUsedMatchups(prev => new Set([...prev, `${nextPair[0].id}-${nextPair[1].id}`]));
           setFadeInIdx(loserIdx);
           setTimeout(() => setFadeInIdx(null), 300);
           setVotedItemIdx(null);
           setDisappearingIdx(null);
         } else {
-          // fallback: recompute as before if not ready
+          // fallback: recompute as before if not ready or if all items used
           usedFallback = true;
           const winner = currentPair[winnerIdx];
           const loser = currentPair[1 - winnerIdx];
@@ -1054,21 +1085,33 @@ function App() {
             return it;
           });
           const winnerItem = updatedGameItems.find(it => it.id === updatedWinner.id);
-          const challenger = getNextChallenger(winnerItem, updatedGameItems);
+          const challenger = getNextChallenger(winnerItem, updatedGameItems, usedItemIds);
           if (challenger) {
             if (winnerIdx === 0) {
               setCurrentPair([winnerItem, challenger]);
             } else {
               setCurrentPair([challenger, winnerItem]);
             }
+            // Track used items
+            setUsedItemIds(prev => new Set([...prev, winnerItem.id, challenger.id]));
+            setUsedMatchups(prev => new Set([...prev, `${winnerItem.id}-${challenger.id}`]));
           } else {
-            if (winnerIdx === 0) {
-              setCurrentPair([winnerItem, null]);
-            } else {
-              setCurrentPair([null, winnerItem]);
+            // All items have been used, reset and start fresh
+            const sorted = [...updatedGameItems].sort((a, b) => (a.indexScore || 0) - (b.indexScore || 0));
+            const bottomQuarter = Math.max(2, Math.ceil(sorted.length * 0.25));
+            const lowerRange = sorted.slice(0, bottomQuarter);
+            
+            const idxs = [];
+            while (idxs.length < 2 && lowerRange.length > 1) {
+              const idx = Math.floor(Math.random() * lowerRange.length);
+              if (!idxs.includes(idx)) idxs.push(idx);
             }
+            
+            const newPair = [lowerRange[idxs[0]], lowerRange[idxs[1]]];
+            setCurrentPair(newPair);
+            setUsedItemIds(new Set([newPair[0].id, newPair[1].id]));
+            setUsedMatchups(new Set([`${newPair[0].id}-${newPair[1].id}`]));
           }
-          setUsedMatchups(prev => new Set([...prev, `${winnerItem.id}-${challenger.id}`]));
           setFadeInIdx(loserIdx);
           setTimeout(() => setFadeInIdx(null), 300);
           setVotedItemIdx(null);
@@ -1145,6 +1188,9 @@ function App() {
     if (!currentPair[idx] || !currentPair[1-idx]) return;
     const winner = currentPair[idx];
     
+    // Switch to Results tab immediately after lock-in
+    setActiveTab('Results');
+    
     // Track lock-in analytics
     if (selectedCategory) {
       trackLockIn(selectedCategory.name, winner.name);
@@ -1180,17 +1226,24 @@ function App() {
       const i = Math.floor(Math.random() * newLowerHalf.length);
       if (!idxs.includes(i)) idxs.push(i);
     }
-    setCurrentPair([newLowerHalf[idxs[0]], newLowerHalf[idxs[1]]]);
+    const newPair = [newLowerHalf[idxs[0]], newLowerHalf[idxs[1]]];
+    setCurrentPair(newPair);
     setLastWinnerId(null);
     setLockInReady(false);
     setWinnerStreak(1);
     setConsecutiveWins(0);
     setCurrentWinnerId(null);
+    // Reset used items when something is locked in as #1
+    setUsedItemIds(new Set([newPair[0].id, newPair[1].id]));
+    setUsedMatchups(new Set([`${newPair[0].id}-${newPair[1].id}`]));
   }
 
   // Handle Lock In Your #1 button click
   async function handleLockInYour1() {
     if (!currentWinnerId) return;
+    
+    // Switch to Results tab immediately after lock-in
+    setActiveTab('Results');
     
     // Track lock-in analytics
     if (selectedCategory) {
@@ -1212,7 +1265,8 @@ function App() {
       }
       const newPair = [lowerHalf[idxs[0]], lowerHalf[idxs[1]]];
       setCurrentPair(newPair);
-      // Mark new matchup as used
+      // Reset used items when something is locked in as #1
+      setUsedItemIds(new Set([newPair[0].id, newPair[1].id]));
       setUsedMatchups(new Set([`${newPair[0].id}-${newPair[1].id}`]));
     } else if (lowerHalf.length === 1) {
       // If only one item in lower half, pick another random item
@@ -1221,7 +1275,8 @@ function App() {
         const randomItem = otherItems[Math.floor(Math.random() * otherItems.length)];
         const newPair = [lowerHalf[0], randomItem];
         setCurrentPair(newPair);
-        // Mark new matchup as used
+        // Reset used items when something is locked in as #1
+        setUsedItemIds(new Set([newPair[0].id, newPair[1].id]));
         setUsedMatchups(new Set([`${newPair[0].id}-${newPair[1].id}`]));
       }
     }
@@ -1231,6 +1286,9 @@ function App() {
     setLockInReady(false);
     setConsecutiveWins(0);
     setCurrentWinnerId(null);
+    // Reset used items when something is locked in as #1
+    // Note: newPair is defined in the if/else blocks above, so we need to handle this differently
+    // The used items will be reset when the next pair is set in the if/else blocks above
   }
 
   // Format upvotes (e.g. 1,234, 1,234,567)
@@ -1392,7 +1450,7 @@ function App() {
         return it;
       });
       const winnerItem = updatedGameItems.find(it => it.id === updatedWinner.id);
-      const challenger = getNextChallenger(winnerItem, updatedGameItems);
+      const challenger = getNextChallenger(winnerItem, updatedGameItems, usedItemIds);
       if (challenger) {
         if (winnerIdx === 0) {
           return [winnerItem, challenger];
@@ -1400,11 +1458,8 @@ function App() {
           return [challenger, winnerItem];
         }
       } else {
-        if (winnerIdx === 0) {
-          return [winnerItem, null];
-        } else {
-          return [null, winnerItem];
-        }
+        // All items have been used, return null to trigger reset
+        return null;
       }
     };
     const leftPair = computeNextPair(0);
@@ -1425,7 +1480,7 @@ function App() {
         preloadImage(rightPair[1].imageUrl)
       ]).then(() => setNextPairImagesLoaded(prev => ({ ...prev, right: true })));
     }
-  }, [currentPair, gameItems, currentEloRange, usedMatchups]);
+  }, [currentPair, gameItems, currentEloRange, usedItemIds]);
 
   // Simple preloading for random mode - generate next 2 random items
   useEffect(() => {
@@ -2032,7 +2087,7 @@ function App() {
                     {visibleRankItems.map((item, idx) => (
                       <div key={item.id || item.name || idx} style={{ opacity: 1 }}>
                         <RankItem>
-                          <RankNum>{rankPage * 10 + idx + 1}.</RankNum>
+                          <RankNum rank={rankPage * 10 + idx + 1}>{rankPage * 10 + idx + 1}.</RankNum>
                             <div style={{
                               display: 'flex',
                               alignItems: 'center',
