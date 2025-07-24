@@ -1612,27 +1612,17 @@ function App() {
   const jingleRef = useRef();
 
   function handleVoteWithWave(winnerIdx, event) {
+    // Trigger green ripple instantly
+    if (waveRef.current && event && event.clientX !== undefined && event.clientY !== undefined) {
+      waveRef.current.triggerWave(event.clientX, event.clientY);
+    }
     // Play jingle sound
     if (jingleRef.current) {
       jingleRef.current.currentTime = 0;
       jingleRef.current.play();
     }
-    // Vibrate on mobile
-    if (window.navigator && window.navigator.vibrate) {
-      window.navigator.vibrate(40);
-    }
-    // Pop animation
-    if (winnerIdx === 0) {
-      namePulseApi0.start({ scale: 1.18 });
-      setTimeout(() => namePulseApi0.start({ scale: 1 }), 120);
-    } else {
-      namePulseApi1.start({ scale: 1.18 });
-      setTimeout(() => namePulseApi1.start({ scale: 1 }), 120);
-    }
-    // Trigger green ripple
-    if (waveRef.current && event && event.clientX !== undefined && event.clientY !== undefined) {
-      waveRef.current.triggerWave(event.clientX, event.clientY);
-    }
+    // (Removed: Vibrate on mobile)
+    // (Removed: Pop animation)
     handleVote(winnerIdx);
   }
 
