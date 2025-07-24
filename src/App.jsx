@@ -1140,7 +1140,14 @@ function App() {
         // RANDOM MODE: use preloaded random items if available
         if (nextRandomItems.length >= 2) {
           setTimeout(() => {
-            setCurrentPair([nextRandomItems[0], nextRandomItems[1]]);
+            setRandomPairLoading(true);
+            Promise.all([
+              preloadImage(nextRandomItems[0].imageUrl),
+              preloadImage(nextRandomItems[1].imageUrl)
+            ]).then(() => {
+              setCurrentPair([nextRandomItems[0], nextRandomItems[1]]);
+              setRandomPairLoading(false);
+            });
           }, 100);
           // Clear the used items so new ones will be generated
           setNextRandomItems([]);
@@ -1153,7 +1160,14 @@ function App() {
               idxB = Math.floor(Math.random() * gameItems.length);
             } while (idxB === idxA && gameItems.length > 1);
             setTimeout(() => {
-              setCurrentPair([gameItems[idxA], gameItems[idxB]]);
+              setRandomPairLoading(true);
+              Promise.all([
+                preloadImage(gameItems[idxA].imageUrl),
+                preloadImage(gameItems[idxB].imageUrl)
+              ]).then(() => {
+                setCurrentPair([gameItems[idxA], gameItems[idxB]]);
+                setRandomPairLoading(false);
+              });
             }, 100);
           }
         }
@@ -1503,23 +1517,35 @@ function App() {
 
   // Preload all trending questions and images when trending mode starts
   useEffect(() => {
+    let cancelled = false;
     if (trendingMode && trendingQuestions.length === 0 && allCategories.length > 0) {
       (async () => {
-        const questions = [];
         const usedIds = [];
-        for (let i = 0; i < 5; i++) {
-          const q = await getRandomTrendingCategory(usedIds);
-          if (!q) break;
-          questions.push(q);
-          usedIds.push(q.category.id);
-        }
-        // Preload all images
-        await Promise.all(
-          questions.flatMap(q => q.items.map(item => preloadImage(item?.imageUrl)))
-        );
-        setTrendingQuestions(questions);
+        // Fetch the first trending question
+        const firstQ = await getRandomTrendingCategory(usedIds);
+        if (!firstQ) return;
+        usedIds.push(firstQ.category.id);
+        // Preload images for the first question
+        await Promise.all(firstQ.items.map(item => preloadImage(item?.imageUrl)));
+        if (cancelled) return;
+        setTrendingQuestions([firstQ]);
         setTrendingIndex(0);
-        setTrendingReady(true); // No delay, start vootes animation immediately
+        setTrendingReady(true);
+        // Fetch the remaining 4 trending questions in the background
+        (async () => {
+          const restQs = await Promise.all(
+            Array.from({ length: 4 }, async () => {
+              const q = await getRandomTrendingCategory(usedIds);
+              if (q) usedIds.push(q.category.id);
+              return q;
+            })
+          );
+          const moreQs = restQs.filter(Boolean);
+          // Preload images for the rest
+          moreQs.forEach(q => q.items.forEach(item => preloadImage(item?.imageUrl)));
+          if (cancelled) return;
+          setTrendingQuestions([firstQ, ...moreQs]);
+        })();
       })();
     }
     if (!trendingMode) {
@@ -1527,6 +1553,7 @@ function App() {
       setTrendingIndex(0);
       setTrendingReady(false);
     }
+    return () => { cancelled = true; };
   }, [trendingMode, allCategories]);
 
   // Reset green border animation when trendingIndex changes
@@ -1581,7 +1608,28 @@ function App() {
 
   const waveRef = useRef();
 
+  // Add audio ref for jingle
+  const jingleRef = useRef();
+
   function handleVoteWithWave(winnerIdx, event) {
+    // Play jingle sound
+    if (jingleRef.current) {
+      jingleRef.current.currentTime = 0;
+      jingleRef.current.play();
+    }
+    // Vibrate on mobile
+    if (window.navigator && window.navigator.vibrate) {
+      window.navigator.vibrate(40);
+    }
+    // Pop animation
+    if (winnerIdx === 0) {
+      namePulseApi0.start({ scale: 1.18 });
+      setTimeout(() => namePulseApi0.start({ scale: 1 }), 120);
+    } else {
+      namePulseApi1.start({ scale: 1.18 });
+      setTimeout(() => namePulseApi1.start({ scale: 1 }), 120);
+    }
+    // Trigger green ripple
     if (waveRef.current && event && event.clientX !== undefined && event.clientY !== undefined) {
       waveRef.current.triggerWave(event.clientX, event.clientY);
     }
@@ -1609,8 +1657,18 @@ function App() {
     }
   }
 
+  // But since the 'volume' prop does not work on <audio>, set it in a useEffect:
+  useEffect(() => {
+    if (jingleRef.current) {
+      jingleRef.current.volume = 0.2;
+    }
+  }, []);
+
+  const [randomPairLoading, setRandomPairLoading] = useState(false);
+
   return (
     <>
+      <audio ref={jingleRef} src="/jingle.mp3" preload="auto" volume={0.2} />
       <WaveEffect ref={waveRef} />
       <ViewportWrapper isMobile={isMobile} scale={viewportScale}>
       <Container>
@@ -1835,7 +1893,13 @@ function App() {
                 </div>
               </div>
             )}
-              {trendingMode && (
+              {trendingMode && !selectedCategory && (!trendingReady || !trendingQuestions[0]) ? (
+                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: 180 }}>
+                  <div className="spinner" style={{ width: 48, height: 48, border: '6px solid #eee', borderTop: '6px solid #2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  <style>{`@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }`}</style>
+                </div>
+              ) : null}
+              {trendingMode && !selectedCategory && trendingReady && trendingQuestions[0] && (
                 <div style={{ background: 'transparent', padding: '32px 32px 0 32px', marginBottom: 8 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 0 }}>
                     <animated.div style={{ fontWeight: 700, fontSize: 22, ...titleSpring }}>Trending Questions 📈</animated.div>
@@ -1873,193 +1937,201 @@ function App() {
             <div style={{ padding: 32, flex: 1 }}>
                 {activeTab === 'Vote' && selectedCategory && (
                 <animated.div style={imagesSpring}>
-                    <UpvoteImagesRow style={{ alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative', width: '100%', height: 280, marginTop: 20 }}>
-                    <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake1.rotate.to(r => `rotate(${r}deg)`), marginRight: 36 }}>
-                      <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1 }}>
-                        <animated.div style={{ scale: imgPulse0.scale }}>
-                            <ImagePlaceholder style={{ cursor: gameLoading || !currentPair[0] ? 'default' : 'pointer', opacity: currentPair[0] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 0 ? `1.5px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={(e) => !gameLoading && currentPair[0] && handleVoteWithWave(0, e)}>
-                            {currentPair[0]?.imageUrl && (
-                                <img src={currentPair[0].imageUrl} alt={currentPair[0]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
+                    {randomPairLoading ? (
+                      <div style={{ width: '100%', height: 280, background: '#fff' }} />
+                    ) : (
+                      <UpvoteImagesRow style={{ alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative', width: '100%', height: 280, marginTop: 20 }}>
+                        <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake1.rotate.to(r => `rotate(${r}deg)`), marginRight: 36 }}>
+                          <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1 }}>
+                            <animated.div style={{ scale: imgPulse0.scale }}>
+                                <ImagePlaceholder style={{ cursor: gameLoading || !currentPair[0] ? 'default' : 'pointer', opacity: currentPair[0] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 0 ? `1.5px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={(e) => !gameLoading && currentPair[0] && handleVoteWithWave(0, e)}>
+                                {currentPair[0]?.imageUrl && (
+                                    <img src={currentPair[0].imageUrl} alt={currentPair[0]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
+                                )}
+                                <animated.div style={{
+                                  position: 'absolute',
+                                    top: 0, left: 0, width: 240, height: 260,
+                                  borderRadius: 16,
+                                  border: `1.5px solid ${NEON_GREEN}`,
+                                  background: 'transparent',
+                                  pointerEvents: 'none',
+                                  zIndex: 10,
+                                  opacity: borderSpring0.borderOpacity,
+                                  boxSizing: 'border-box',
+                                  transition: 'opacity 0.3s',
+                                }} />
+                              </ImagePlaceholder>
+                            </animated.div>
+                          </animated.div>
+                            <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 10 }}>
+                            <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, width: '100%' }}>
+                                <animated.div style={{ scale: namePulse0.scale }}>
+                              <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[0]?.name || `Item 1`}</ItemName>
+                            </animated.div>
+                            </animated.div>
+                              {lockInReady && currentWinnerId === currentPair[0]?.id && (
+                                <div style={{ textAlign: 'center', marginTop: 8 }}>
+                                  <button style={{ padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', width: 'auto', minWidth: 120 }} onClick={() => handleLockInYour1()} disabled={gameLoading}>Lock In Your #1</button>
+                                </div>
+                              )}
+                          </div>
+                          {/* Lock In as #1 button logic for left item (now requires 5 consecutive picks) */}
+                          <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
+                            {currentPair[0] && (
+                              (lastWinnerId === currentPair[0].id && winnerStreak >= 5) ||
+                              (top5Ids.includes(currentPair[0].id) && lastWinnerId === currentPair[0].id && winnerStreak >= 1)
+                            ) && (
+                              <button style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#2563eb',
+                                fontWeight: 700,
+                                fontSize: 15,
+                                cursor: 'pointer',
+                                padding: 0,
+                                minHeight: 24,
+                                minWidth: 0,
+                                lineHeight: 1.2,
+                                textDecoration: 'underline',
+                              }} onClick={() => handleLockInAs1(0)}>Lock In as #1</button>
                             )}
-                            <animated.div style={{
-                              position: 'absolute',
-                                top: 0, left: 0, width: 240, height: 260,
-                              borderRadius: 16,
-                              border: `1.5px solid ${NEON_GREEN}`,
-                              background: 'transparent',
-                              pointerEvents: 'none',
-                              zIndex: 10,
-                              opacity: borderSpring0.borderOpacity,
-                              boxSizing: 'border-box',
-                              transition: 'opacity 0.3s',
-                            }} />
-                          </ImagePlaceholder>
+                          </div>
                         </animated.div>
-                      </animated.div>
-                        <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 10 }}>
-                        <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, width: '100%' }}>
-                            <animated.div style={{ scale: namePulse0.scale }}>
-                          <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[0]?.name || `Item 1`}</ItemName>
-                        </animated.div>
-                        </animated.div>
-                          {lockInReady && currentWinnerId === currentPair[0]?.id && (
-                            <div style={{ textAlign: 'center', marginTop: 8 }}>
-                              <button style={{ padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', width: 'auto', minWidth: 120 }} onClick={() => handleLockInYour1()} disabled={gameLoading}>Lock In Your #1</button>
-                            </div>
-                          )}
-                      </div>
-                      {/* Lock In as #1 button logic for left item (now requires 5 consecutive picks) */}
-                      <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
-                        {currentPair[0] && (
-                          (lastWinnerId === currentPair[0].id && winnerStreak >= 5) ||
-                          (top5Ids.includes(currentPair[0].id) && lastWinnerId === currentPair[0].id && winnerStreak >= 1)
-                        ) && (
-                          <button style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#2563eb',
-                            fontWeight: 700,
-                            fontSize: 15,
-                            cursor: 'pointer',
-                            padding: 0,
-                            minHeight: 24,
-                            minWidth: 0,
-                            lineHeight: 1.2,
-                            textDecoration: 'underline',
-                          }} onClick={() => handleLockInAs1(0)}>Lock In as #1</button>
-                        )}
-                      </div>
-                    </animated.div>
-                    <div style={{ position: 'absolute', left: '50%', top: '44%', transform: 'translate(-50%, -50%)', minWidth: 120, maxWidth: 140, minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 3 }}>
-                      <OrText style={{ margin: 0, padding: 0, minWidth: 0, textAlign: 'center', wordBreak: 'break-word' }}>OR</OrText>
-                    </div>
-                    <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake2.rotate.to(r => `rotate(${r}deg)`), marginLeft: 36 }}>
-                      <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1 }}>
-                        <animated.div style={{ scale: imgPulse1.scale }}>
-                            <ImagePlaceholder style={{ cursor: gameLoading || !currentPair[1] ? 'default' : 'pointer', opacity: currentPair[1] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 1 ? `1.5px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={(e) => !gameLoading && currentPair[1] && handleVoteWithWave(1, e)}>
-                            {currentPair[1]?.imageUrl && (
-                                <img src={currentPair[1].imageUrl} alt={currentPair[1]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
+                        <div style={{ position: 'absolute', left: '50%', top: '44%', transform: 'translate(-50%, -50%)', minWidth: 120, maxWidth: 140, minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 3 }}>
+                          <OrText style={{ margin: 0, padding: 0, minWidth: 0, textAlign: 'center', wordBreak: 'break-word' }}>OR</OrText>
+                        </div>
+                        <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake2.rotate.to(r => `rotate(${r}deg)`), marginLeft: 36 }}>
+                          <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1 }}>
+                            <animated.div style={{ scale: imgPulse1.scale }}>
+                                <ImagePlaceholder style={{ cursor: gameLoading || !currentPair[1] ? 'default' : 'pointer', opacity: currentPair[1] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 1 ? `1.5px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={(e) => !gameLoading && currentPair[1] && handleVoteWithWave(1, e)}>
+                                {currentPair[1]?.imageUrl && (
+                                    <img src={currentPair[1].imageUrl} alt={currentPair[1]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
+                                )}
+                                <animated.div style={{
+                                  position: 'absolute',
+                                    top: 0, left: 0, width: 240, height: 260,
+                                  borderRadius: 16,
+                                  border: `1.5px solid ${NEON_GREEN}`,
+                                  background: 'transparent',
+                                  pointerEvents: 'none',
+                                  zIndex: 10,
+                                  opacity: borderSpring1.borderOpacity,
+                                  boxSizing: 'border-box',
+                                  transition: 'opacity 0.3s',
+                                }} />
+                              </ImagePlaceholder>
+                            </animated.div>
+                          </animated.div>
+                            <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 10 }}>
+                            <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, width: '100%' }}>
+                                <animated.div style={{ scale: namePulse1.scale }}>
+                              <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[1]?.name || `Item 2`}</ItemName>
+                            </animated.div>
+                            </animated.div>
+                              {lockInReady && currentWinnerId === currentPair[1]?.id && (
+                                <div style={{ textAlign: 'center', marginTop: 8 }}>
+                                  <button style={{ padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', width: 'auto', minWidth: 120 }} onClick={() => handleLockInYour1()} disabled={gameLoading}>Lock In Your #1</button>
+                                </div>
+                              )}
+                          </div>
+                          {/* Lock In as #1 button logic for right item (now requires 5 consecutive picks) */}
+                          <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
+                            {currentPair[1] && (
+                              (lastWinnerId === currentPair[1].id && winnerStreak >= 5) ||
+                              (top5Ids.includes(currentPair[1].id) && lastWinnerId === currentPair[1].id && winnerStreak >= 1)
+                            ) && (
+                              <button style={{
+                                background: 'none',
+                                border: 'none',
+                                color: '#2563eb',
+                                fontWeight: 700,
+                                fontSize: 15,
+                                cursor: 'pointer',
+                                padding: 0,
+                                minHeight: 24,
+                                minWidth: 0,
+                                lineHeight: 1.2,
+                                textDecoration: 'underline',
+                              }} onClick={() => handleLockInAs1(1)}>Lock In as #1</button>
                             )}
-                            <animated.div style={{
-                              position: 'absolute',
-                                top: 0, left: 0, width: 240, height: 260,
-                              borderRadius: 16,
-                              border: `1.5px solid ${NEON_GREEN}`,
-                              background: 'transparent',
-                              pointerEvents: 'none',
-                              zIndex: 10,
-                              opacity: borderSpring1.borderOpacity,
-                              boxSizing: 'border-box',
-                              transition: 'opacity 0.3s',
-                            }} />
-                          </ImagePlaceholder>
+                          </div>
                         </animated.div>
-                      </animated.div>
-                        <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 10 }}>
-                        <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, width: '100%' }}>
-                            <animated.div style={{ scale: namePulse1.scale }}>
-                          <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{currentPair[1]?.name || `Item 2`}</ItemName>
-                        </animated.div>
-                        </animated.div>
-                          {lockInReady && currentWinnerId === currentPair[1]?.id && (
-                            <div style={{ textAlign: 'center', marginTop: 8 }}>
-                              <button style={{ padding: '6px 18px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', width: 'auto', minWidth: 120 }} onClick={() => handleLockInYour1()} disabled={gameLoading}>Lock In Your #1</button>
-                            </div>
-                          )}
-                      </div>
-                      {/* Lock In as #1 button logic for right item (now requires 5 consecutive picks) */}
-                      <div style={{ minHeight: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: 2, width: 240 }}>
-                        {currentPair[1] && (
-                          (lastWinnerId === currentPair[1].id && winnerStreak >= 5) ||
-                          (top5Ids.includes(currentPair[1].id) && lastWinnerId === currentPair[1].id && winnerStreak >= 1)
-                        ) && (
-                          <button style={{
-                            background: 'none',
-                            border: 'none',
-                            color: '#2563eb',
-                            fontWeight: 700,
-                            fontSize: 15,
-                            cursor: 'pointer',
-                            padding: 0,
-                            minHeight: 24,
-                            minWidth: 0,
-                            lineHeight: 1.2,
-                            textDecoration: 'underline',
-                          }} onClick={() => handleLockInAs1(1)}>Lock In as #1</button>
-                        )}
-                      </div>
-                    </animated.div>
-                  </UpvoteImagesRow>
+                      </UpvoteImagesRow>
+                    )}
                   {gameLoading && <div style={{ textAlign: 'center', color: '#888', marginTop: 16 }}>Loading...</div>}
                 </animated.div>
               )}
                 {activeTab === 'Vote' && !selectedCategory && trendingMode && (
                   <animated.div style={imagesSpring}>
-                    <UpvoteImagesRow style={{ alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative', width: '100%', height: 280, marginTop: 20 }}>
-                      <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake1.rotate.to(r => `rotate(${r}deg)`), marginRight: 36 }}>
-                        <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1 }}>
-                          <animated.div style={{ scale: imgPulse0.scale }}>
-                            <ImagePlaceholder style={{ cursor: trendingQuestions[trendingIndex]?.items[0] ? 'pointer' : 'default', opacity: trendingQuestions[trendingIndex]?.items[0] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 0 ? `1.5px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={(e) => trendingQuestions[trendingIndex]?.items[0] && handleVoteWithWave(0, e)}>
-                              {trendingQuestions[trendingIndex]?.items[0]?.imageUrl && (
-                                <img src={trendingQuestions[trendingIndex]?.items[0].imageUrl} alt={trendingQuestions[trendingIndex]?.items[0]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
-                              )}
-                              <animated.div style={{
-                                position: 'absolute',
-                                top: 0, left: 0, width: 240, height: 260,
-                                borderRadius: 16,
-                                border: `1.5px solid ${NEON_GREEN}`,
-                                background: 'transparent',
-                                pointerEvents: 'none',
-                                zIndex: 10,
-                                opacity: borderSpring0.borderOpacity,
-                                boxSizing: 'border-box',
-                                transition: 'opacity 0.3s',
-                              }} />
-                            </ImagePlaceholder>
-                          </animated.div>
-                        </animated.div>
-                        <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
-                          <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, width: '100%' }}>
-                            <animated.div style={{ scale: namePulse0.scale }}>
-                              <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{trendingQuestions[trendingIndex]?.items[0]?.name || `Item 1`}</ItemName>
+                    {randomPairLoading ? (
+                      <div style={{ width: '100%', height: 280, background: '#fff' }} />
+                    ) : (
+                      <UpvoteImagesRow style={{ alignItems: 'center', justifyContent: 'center', gap: 0, position: 'relative', width: '100%', height: 280, marginTop: 20 }}>
+                        <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake1.rotate.to(r => `rotate(${r}deg)`), marginRight: 36 }}>
+                          <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1 }}>
+                            <animated.div style={{ scale: imgPulse0.scale }}>
+                              <ImagePlaceholder style={{ cursor: trendingQuestions[trendingIndex]?.items[0] ? 'pointer' : 'default', opacity: trendingQuestions[trendingIndex]?.items[0] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 0 ? `1.5px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={(e) => trendingQuestions[trendingIndex]?.items[0] && handleVoteWithWave(0, e)}>
+                                {trendingQuestions[trendingIndex]?.items[0]?.imageUrl && (
+                                  <img src={trendingQuestions[trendingIndex]?.items[0].imageUrl} alt={trendingQuestions[trendingIndex]?.items[0]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
+                                )}
+                                <animated.div style={{
+                                  position: 'absolute',
+                                  top: 0, left: 0, width: 240, height: 260,
+                                  borderRadius: 16,
+                                  border: `1.5px solid ${NEON_GREEN}`,
+                                  background: 'transparent',
+                                  pointerEvents: 'none',
+                                  zIndex: 10,
+                                  opacity: borderSpring0.borderOpacity,
+                                  boxSizing: 'border-box',
+                                  transition: 'opacity 0.3s',
+                                }} />
+                              </ImagePlaceholder>
                             </animated.div>
                           </animated.div>
-                        </div>
-                      </animated.div>
-                      <div style={{ position: 'absolute', left: '50%', top: '44%', transform: 'translate(-50%, -50%)', minWidth: 120, maxWidth: 140, minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 3 }}>
-                        <OrText style={{ margin: 0, padding: 0, minWidth: 0, textAlign: 'center', wordBreak: 'break-word' }}>OR</OrText>
-                      </div>
-                      <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake2.rotate.to(r => `rotate(${r}deg)`), marginLeft: 36 }}>
-                        <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1 }}>
-                          <animated.div style={{ scale: imgPulse1.scale }}>
-                            <ImagePlaceholder style={{ cursor: trendingQuestions[trendingIndex]?.items[1] ? 'pointer' : 'default', opacity: trendingQuestions[trendingIndex]?.items[1] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 1 ? `1.5px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={(e) => trendingQuestions[trendingIndex]?.items[1] && handleVoteWithWave(1, e)}>
-                              {trendingQuestions[trendingIndex]?.items[1]?.imageUrl && (
-                                <img src={trendingQuestions[trendingIndex]?.items[1].imageUrl} alt={trendingQuestions[trendingIndex]?.items[1]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
-                              )}
-                              <animated.div style={{
-                                position: 'absolute',
-                                top: 0, left: 0, width: 240, height: 260,
-                                borderRadius: 16,
-                                border: `1.5px solid ${NEON_GREEN}`,
-                                background: 'transparent',
-                                pointerEvents: 'none',
-                                zIndex: 10,
-                                opacity: borderSpring1.borderOpacity,
-                                boxSizing: 'border-box',
-                                transition: 'opacity 0.3s',
-                              }} />
-                            </ImagePlaceholder>
-                          </animated.div>
+                          <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
+                            <animated.div style={{ opacity: fadeInIdx === 0 ? fadeInSpring.opacity : 1, width: '100%' }}>
+                              <animated.div style={{ scale: namePulse0.scale }}>
+                                <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{trendingQuestions[trendingIndex]?.items[0]?.name || `Item 1`}</ItemName>
+                              </animated.div>
+                            </animated.div>
+                          </div>
                         </animated.div>
-                        <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
-                          <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, width: '100%' }}>
-                            <animated.div style={{ scale: namePulse1.scale }}>
-                              <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{trendingQuestions[trendingIndex]?.items[1]?.name || `Item 2`}</ItemName>
+                        <div style={{ position: 'absolute', left: '50%', top: '44%', transform: 'translate(-50%, -50%)', minWidth: 120, maxWidth: 140, minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', zIndex: 3 }}>
+                          <OrText style={{ margin: 0, padding: 0, minWidth: 0, textAlign: 'center', wordBreak: 'break-word' }}>OR</OrText>
+                        </div>
+                        <animated.div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', justifyContent: 'flex-start', minWidth: 180, maxWidth: 220, wordBreak: 'break-word', position: 'relative', zIndex: 2, transform: shake2.rotate.to(r => `rotate(${r}deg)`), marginLeft: 36 }}>
+                          <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1 }}>
+                            <animated.div style={{ scale: imgPulse1.scale }}>
+                              <ImagePlaceholder style={{ cursor: trendingQuestions[trendingIndex]?.items[1] ? 'pointer' : 'default', opacity: trendingQuestions[trendingIndex]?.items[1] ? 1 : 0.3, position: 'relative', zIndex: 1, overflow: 'hidden', border: votedItemIdx === 1 ? `1.5px solid ${NEON_GREEN}` : '1.5px solid #222', width: 240, height: 260, background: '#fff' }} onClick={(e) => trendingQuestions[trendingIndex]?.items[1] && handleVoteWithWave(1, e)}>
+                                {trendingQuestions[trendingIndex]?.items[1]?.imageUrl && (
+                                  <img src={trendingQuestions[trendingIndex]?.items[1].imageUrl} alt={trendingQuestions[trendingIndex]?.items[1]?.name || 'item'} style={{ width: '100%', height: '100%', objectFit: 'contain', borderRadius: 16, display: 'block', position: 'absolute', top: 0, left: 0, background: '#fff' }} />
+                                )}
+                                <animated.div style={{
+                                  position: 'absolute',
+                                  top: 0, left: 0, width: 240, height: 260,
+                                  borderRadius: 16,
+                                  border: `1.5px solid ${NEON_GREEN}`,
+                                  background: 'transparent',
+                                  pointerEvents: 'none',
+                                  zIndex: 10,
+                                  opacity: borderSpring1.borderOpacity,
+                                  boxSizing: 'border-box',
+                                  transition: 'opacity 0.3s',
+                                }} />
+                              </ImagePlaceholder>
                             </animated.div>
                           </animated.div>
-                        </div>
-                      </animated.div>
-                    </UpvoteImagesRow>
+                          <div style={{ width: 240, display: 'flex', flexDirection: 'column', alignItems: 'center', marginTop: 20 }}>
+                            <animated.div style={{ opacity: fadeInIdx === 1 ? fadeInSpring.opacity : 1, width: '100%' }}>
+                              <animated.div style={{ scale: namePulse1.scale }}>
+                                <ItemName style={{ wordBreak: 'break-word', marginTop: 0, whiteSpace: 'normal', overflowWrap: 'break-word', width: '100%', textAlign: 'center' }}>{trendingQuestions[trendingIndex]?.items[1]?.name || `Item 2`}</ItemName>
+                              </animated.div>
+                            </animated.div>
+                          </div>
+                        </animated.div>
+                      </UpvoteImagesRow>
+                    )}
                   </animated.div>
                 )}
                 {activeTab === 'Vote' && !selectedCategory && !trendingMode && (
